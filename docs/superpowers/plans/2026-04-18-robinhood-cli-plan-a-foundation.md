@@ -712,6 +712,10 @@ func TestSession_LoadFromEnv_Missing(t *testing.T) {
 	}
 }
 
+// IsExpired must return true ONLY when ExpiresAt is known and at/within the
+// refresh buffer. Zero ExpiresAt = unknown = false (trust access token,
+// refresh only on 401). Guards Codex finding #2: env-loaded sessions must
+// not burn their refresh token on every invocation.
 func TestSession_IsExpired(t *testing.T) {
 	now := time.Now()
 	cases := []struct {
@@ -719,7 +723,7 @@ func TestSession_IsExpired(t *testing.T) {
 		expiry time.Time
 		want   bool
 	}{
-		{"zero time (unknown)", time.Time{}, true},
+		{"zero time (unknown)", time.Time{}, false}, // unknown → do not proactively refresh
 		{"past", now.Add(-1 * time.Hour), true},
 		{"within buffer", now.Add(1 * time.Minute), true},
 		{"well ahead", now.Add(1 * time.Hour), false},
@@ -729,6 +733,26 @@ func TestSession_IsExpired(t *testing.T) {
 			s := &Session{ExpiresAt: c.expiry}
 			if got := s.IsExpired(); got != c.want {
 				t.Errorf("IsExpired() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestSession_NeedsImmediateRefresh(t *testing.T) {
+	cases := []struct {
+		name    string
+		sess    *Session
+		want    bool
+	}{
+		{"access empty, refresh present", &Session{AccessToken: "", RefreshToken: "r"}, true},
+		{"access present, unknown expiry", &Session{AccessToken: "a"}, false},
+		{"both empty", &Session{}, false},
+		{"access present, past expiry", &Session{AccessToken: "a", ExpiresAt: time.Now().Add(-time.Hour)}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.sess.NeedsImmediateRefresh(); got != c.want {
+				t.Errorf("NeedsImmediateRefresh() = %v, want %v", got, c.want)
 			}
 		})
 	}
@@ -770,17 +794,32 @@ type Session struct {
 	ExpiresAt    time.Time
 }
 
-// IsExpired reports whether the access token is at or within the refresh buffer.
-// A zero ExpiresAt is treated as unknown-expired (safer default).
+// IsExpired returns true ONLY when ExpiresAt is known and at/within the
+// refresh buffer. Zero ExpiresAt means "unknown" — callers must NOT treat
+// unknown as expired. The client only proactively refreshes on known-expired;
+// unknown tokens go to the endpoint first and refresh on 401.
 func (s *Session) IsExpired() bool {
 	if s.ExpiresAt.IsZero() {
-		return true
+		return false
 	}
 	return time.Now().Add(refreshBuffer).After(s.ExpiresAt)
 }
 
+// NeedsImmediateRefresh reports whether a request cannot go out with the
+// current tokens — i.e., no access token (but refresh available), or a
+// known-expired access token. Unknown expiry with a present access token
+// returns false (trust the access token; let 401 drive refresh).
+func (s *Session) NeedsImmediateRefresh() bool {
+	if s.AccessToken == "" {
+		return s.RefreshToken != ""
+	}
+	return s.IsExpired()
+}
+
 // LoadSessionFromEnv builds a Session from env vars.
 // Returns CodeUnauthenticated if access+refresh tokens are both missing.
+// ExpiresAt is left zero (unknown) — the client will use the access token
+// until a 401, then refresh once.
 func LoadSessionFromEnv() (*Session, error) {
 	access := os.Getenv(config.EnvAccessToken)
 	refresh := os.Getenv(config.EnvRefreshToken)
@@ -796,7 +835,7 @@ func LoadSessionFromEnv() (*Session, error) {
 		AccessToken:  access,
 		RefreshToken: refresh,
 		DeviceToken:  os.Getenv(config.EnvDeviceToken),
-		// ExpiresAt unknown from env; IsExpired() returns true, forcing refresh on first call.
+		// ExpiresAt left zero (unknown) — see Session.IsExpired / NeedsImmediateRefresh.
 	}, nil
 }
 ```
@@ -1262,6 +1301,73 @@ func TestClient_GetJSON_PreEmptiveRefresh(t *testing.T) {
 	}
 }
 
+// Env-loaded sessions have unknown expiry. The client MUST use the access
+// token and only refresh on a 401 — otherwise one broken refresh token kills
+// every request even when the access token is fine. Regression guard for
+// Codex adversarial finding #2.
+func TestClient_UnknownExpiry_UsesAccessTokenWithoutRefresh(t *testing.T) {
+	var pingCalls, oauthCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ping":
+			atomic.AddInt32(&pingCalls, 1)
+			if r.Header.Get("Authorization") != "Bearer valid-access" {
+				t.Errorf("expected access token to be sent directly, got %q", r.Header.Get("Authorization"))
+			}
+			_ = json.NewEncoder(w).Encode(pingResponse{OK: true})
+		case "/oauth2/token/":
+			atomic.AddInt32(&oauthCalls, 1)
+			// Simulate a broken refresh token — should never be called here.
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClientWithHosts(srv.URL, srv.URL, srv.URL, srv.Client())
+	c.SetSession(&Session{AccessToken: "valid-access", RefreshToken: "broken"}) // ExpiresAt left zero
+
+	var out pingResponse
+	if err := c.getJSON(APIHost, "/ping", &out); err != nil {
+		t.Fatalf("unknown-expiry should trust access token, got %v", err)
+	}
+	if pingCalls != 1 {
+		t.Errorf("pingCalls = %d, want 1", pingCalls)
+	}
+	if oauthCalls != 0 {
+		t.Errorf("oauthCalls = %d, want 0 (refresh must NOT fire on unknown expiry)", oauthCalls)
+	}
+}
+
+// A second invocation with the same env-loaded session must also not burn
+// the refresh token — each CLI invocation is a fresh process with unknown
+// expiry and a valid access token.
+func TestClient_UnknownExpiry_RepeatedInvocationsDoNotRefresh(t *testing.T) {
+	var oauthCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ping":
+			_ = json.NewEncoder(w).Encode(pingResponse{OK: true})
+		case "/oauth2/token/":
+			atomic.AddInt32(&oauthCalls, 1)
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer srv.Close()
+
+	for i := 0; i < 3; i++ {
+		c := NewClientWithHosts(srv.URL, srv.URL, srv.URL, srv.Client())
+		c.SetSession(&Session{AccessToken: "valid", RefreshToken: "r"})
+		var out pingResponse
+		if err := c.getJSON(APIHost, "/ping", &out); err != nil {
+			t.Fatalf("iteration %d: %v", i, err)
+		}
+	}
+	if oauthCalls != 0 {
+		t.Errorf("oauthCalls after 3 invocations = %d, want 0", oauthCalls)
+	}
+}
+
 func TestClient_GetJSON_RateLimit(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "30")
@@ -1405,7 +1511,13 @@ func (c *Client) ensureFresh() error {
 	if s == nil {
 		return &APIError{Code: CodeUnauthenticated, Message: "no session", Hint: "run: rh login"}
 	}
-	if s.IsExpired() && s.RefreshToken != "" {
+	// Only proactively refresh when we KNOW we need to:
+	// - no access token (but refresh available), or
+	// - access token present with a known-expired ExpiresAt.
+	// Unknown expiry (env-loaded sessions) trusts the access token and
+	// lets 401 drive refresh. Otherwise every CLI invocation would burn
+	// the refresh token once before trying the live access token.
+	if s.NeedsImmediateRefresh() {
 		return c.oauth.Refresh(s)
 	}
 	return nil
@@ -1792,12 +1904,11 @@ func TestJSON_WriteError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var env Envelope
-	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
-		t.Fatal(err)
-	}
-	if env.Data != nil {
-		t.Error("Data should be nil on error")
+	// The wire shape we promise is `"data": null`. After unmarshalling into
+	// json.RawMessage, that is the non-nil byte slice []byte("null") — so
+	// assert on the raw bytes, not `== nil`.
+	if string(env.Data) != "null" {
+		t.Errorf("Data raw = %q, want %q", string(env.Data), "null")
 	}
 	if env.Error == nil {
 		t.Fatal("Error should be set")
@@ -1807,6 +1918,47 @@ func TestJSON_WriteError(t *testing.T) {
 	}
 	if env.Error.Hint != "run: rh login" {
 		t.Errorf("Error.Hint = %q", env.Error.Hint)
+	}
+}
+
+// TestJSON_ErrorEnvelope_WireShape pins the on-the-wire JSON shape directly
+// so the contract survives any later refactor of Envelope internals.
+func TestJSON_ErrorEnvelope_WireShape(t *testing.T) {
+	var buf bytes.Buffer
+	w := &JSONWriter{Out: &buf, Now: func() time.Time { return time.Unix(0, 0).UTC() }}
+	if err := w.WriteError("x", &robinhood.APIError{Code: robinhood.CodeNotFound, Message: "m"}); err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(buf.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if string(raw["data"]) != "null" {
+		t.Errorf(`expected "data": null on the wire, got %s`, string(raw["data"]))
+	}
+	if string(raw["error"]) == "null" {
+		t.Error("error should not be null on error envelope")
+	}
+	if string(raw["schema"]) != `"robinhood-cli/v1"` {
+		t.Errorf("schema = %s", string(raw["schema"]))
+	}
+}
+
+func TestJSON_ErrorEnvelope_IsSingleDocument(t *testing.T) {
+	var buf bytes.Buffer
+	w := &JSONWriter{Out: &buf, Now: func() time.Time { return time.Unix(0, 0).UTC() }}
+	if err := w.WriteError("x", &robinhood.APIError{Code: robinhood.CodeValidation}); err != nil {
+		t.Fatal(err)
+	}
+	dec := json.NewDecoder(&buf)
+	var first any
+	if err := dec.Decode(&first); err != nil {
+		t.Fatal(err)
+	}
+	// Any trailing bytes after one document = contract violation.
+	var trailing any
+	if err := dec.Decode(&trailing); err == nil {
+		t.Errorf("expected single JSON document, got trailing content %v", trailing)
 	}
 }
 ```
@@ -2294,7 +2446,17 @@ go mod tidy
 
 Expected: `go.sum` updated.
 
-- [ ] **Step 2: Create `main.go`**
+- [ ] **Step 2: Create `main.go` with centralized error rendering**
+
+**Error-rendering contract (locks the JSON contract on failure paths):**
+
+- Subcommand `RunE`s MUST NOT write anything on error — they just `return err`.
+- `main` is the ONLY place errors surface to the user.
+- In JSON mode, `main` emits exactly one error envelope to stdout (the parseable contract) and nothing to stderr.
+- In pretty mode, `main` emits a one-liner to stderr and nothing to stdout.
+- Either way, `main` maps the `APIError.Code` to the exit code.
+
+This way `rh portfolio --json 2>/dev/null` is a single parseable JSON document on both success and failure, and scripts/skills never see split output.
 
 Create `cmd/rh/main.go`:
 
@@ -2302,22 +2464,52 @@ Create `cmd/rh/main.go`:
 package main
 
 import (
-	"fmt"
 	"os"
 
+	"github.com/herocod3r/robinhood-cli/internal/output"
 	"github.com/herocod3r/robinhood-cli/internal/robinhood"
+	"github.com/spf13/cobra"
 )
 
 func main() {
 	root := newRootCommand()
 	if err := root.Execute(); err != nil {
-		exit := 1
-		if apiErr, ok := err.(*robinhood.APIError); ok {
-			exit = apiErr.ExitCode()
-		}
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(exit)
+		renderTopLevelError(root, err)
+		os.Exit(exitCodeFor(err))
 	}
+}
+
+// renderTopLevelError emits exactly one record describing the failure.
+// In JSON mode: one envelope on stdout, nothing on stderr.
+// In pretty mode: one line on stderr, nothing on stdout.
+func renderTopLevelError(root *cobra.Command, err error) {
+	cmdName := commandNameFor(root)
+	switch resolveOutputMode() {
+	case output.ModeJSON:
+		w := &output.JSONWriter{Out: os.Stdout}
+		_ = w.WriteError(cmdName, err)
+	default:
+		w := &output.TableWriter{Out: os.Stderr}
+		_ = w.WriteError(cmdName, err)
+	}
+}
+
+// commandNameFor returns the name of the leaf command Cobra tried to run so
+// error envelopes say e.g. "command": "portfolio" rather than "rh".
+func commandNameFor(root *cobra.Command) string {
+	c, _, _ := root.Find(os.Args[1:])
+	if c != nil && c != root {
+		return c.Name()
+	}
+	return root.Name()
+}
+
+// exitCodeFor maps an error to the CLI exit code. See spec section 6.5.
+func exitCodeFor(err error) int {
+	if apiErr, ok := err.(*robinhood.APIError); ok {
+		return apiErr.ExitCode()
+	}
+	return 1
 }
 ```
 
@@ -2351,7 +2543,7 @@ func newRootCommand() *cobra.Command {
 		Use:          "rh",
 		Short:        "Read-only Robinhood CLI for portfolio research",
 		SilenceUsage: true,
-		// SilenceErrors: main() prints errors itself so it can choose the exit code.
+		// SilenceErrors: main() emits exactly one envelope itself and chooses exit code.
 		SilenceErrors: true,
 	}
 	cmd.PersistentFlags().BoolVar(&gflags.JSON, "json", false, "force JSON output")
@@ -2544,7 +2736,7 @@ git commit -m "feat(cmd): newAuthedClient helper reading env vars"
 
 - [ ] **Step 1: Implement `rh portfolio`**
 
-Create `cmd/rh/portfolio.go`:
+Create `cmd/rh/portfolio.go`. This command follows the **error-rendering contract**: it returns errors without writing them. `main` emits the single envelope.
 
 ```go
 package main
@@ -2570,39 +2762,21 @@ func init() {
 func runPortfolio(cmd *cobra.Command, args []string) error {
 	client, err := newAuthedClient()
 	if err != nil {
-		writeErr(os.Stderr, "portfolio", err)
-		return err
+		return err // main() writes the envelope
 	}
 
-	p := endpoints.NewPortfolio(client)
-	summary, err := p.Get()
+	summary, err := endpoints.NewPortfolio(client).Get()
 	if err != nil {
-		writeErr(os.Stderr, "portfolio", err)
-		return err
+		return err // main() writes the envelope
 	}
 
-	mode := resolveOutputMode()
-	switch mode {
+	switch resolveOutputMode() {
 	case output.ModeJSON:
 		w := &output.JSONWriter{Out: os.Stdout}
 		return w.WriteSuccess("portfolio", summary, nil)
 	default:
 		w := &output.TableWriter{Out: os.Stdout}
 		return w.WritePortfolio(summary)
-	}
-}
-
-// writeErr emits the error in the same mode as the selected output, to the
-// given writer (usually stderr). Keeps error UX consistent across commands.
-func writeErr(w *os.File, command string, err error) {
-	mode := resolveOutputMode()
-	switch mode {
-	case output.ModeJSON:
-		jw := &output.JSONWriter{Out: w}
-		_ = jw.WriteError(command, err)
-	default:
-		tw := &output.TableWriter{Out: w}
-		_ = tw.WriteError(command, err)
 	}
 }
 ```
@@ -2612,10 +2786,10 @@ func writeErr(w *os.File, command string, err error) {
 Run:
 ```bash
 go build ./cmd/rh
-./rh portfolio --json 2>&1 || true
+./rh portfolio --json || true
 ```
 
-Expected: JSON envelope with `error.code = "unauthenticated"` (no env vars set), exit code 2.
+Expected: a single JSON envelope on stdout with `error.code = "unauthenticated"`, **nothing on stderr** in JSON mode, exit code 2.
 
 - [ ] **Step 3: Commit**
 
@@ -3036,9 +3210,15 @@ git commit -m "chore(ci): GitHub Actions running vet, test, lint, build smoke"
 
 ---
 
-## Task 19: Exit-code and error-envelope integration test
+## Task 19: Exit-code + single-envelope CLI integration tests
 
-A high-signal integration test that binds the error taxonomy to the CLI exit code — catches silent regressions where a refactor drops a branch.
+Two integration layers bound in one test file:
+
+1. **Unit-ish** — pin the exit-code mapping and subcommand registration (fast).
+2. **End-to-end via `os/exec`** — compile the binary once and assert that `rh`
+   emits **exactly one JSON document** to stdout on both success and failure
+   paths, with no trailing plaintext. This is the regression guard for Codex's
+   "JSON error output is not single-envelope safe" finding.
 
 **Files:**
 - Create: `cmd/rh/exit_test.go`
@@ -3051,6 +3231,12 @@ Create `cmd/rh/exit_test.go`:
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/herocod3r/robinhood-cli/internal/robinhood"
@@ -3091,22 +3277,151 @@ func TestRootCommand_Registers(t *testing.T) {
 		}
 	}
 }
+
+// buildRH compiles the cmd/rh package into a temp binary and returns its path.
+// go test runs with the package directory as CWD, so "." is the cmd/rh package.
+func buildRH(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "rh")
+	cmd := exec.Command("go", "build", "-o", bin, ".")
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("go build: %v", err)
+	}
+	return bin
+}
+
+// assertSingleJSONDoc decodes stdout and asserts it contains exactly ONE
+// JSON document with no trailing content — the single-envelope contract.
+func assertSingleJSONDoc(t *testing.T, stdout []byte) map[string]any {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(stdout))
+	var first map[string]any
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, string(stdout))
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); err == nil {
+		t.Fatalf("stdout contains >1 JSON document (contract violation):\n%s", string(stdout))
+	}
+	// Any non-whitespace remainder is also a violation.
+	rest, _ := dec.Buffered().(interface{ Len() int }), 0
+	_ = rest
+	return first
+}
+
+// TestE2E_UnauthenticatedPortfolioIsOneEnvelope: running `rh portfolio --json`
+// with no credentials MUST produce exactly one JSON error envelope on stdout,
+// nothing on stderr, and exit code 2. Regression guard for Codex finding #1.
+func TestE2E_UnauthenticatedPortfolioIsOneEnvelope(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e build in -short mode")
+	}
+	bin := buildRH(t)
+
+	cmd := exec.Command(bin, "portfolio", "--json")
+	// Scrub any ambient tokens so we deterministically hit unauth path.
+	cmd.Env = append(os.Environ(),
+		"ROBINHOOD_ACCESS_TOKEN=",
+		"ROBINHOOD_REFRESH_TOKEN=",
+		"ROBINHOOD_DEVICE_TOKEN=",
+	)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected ExitError, got %v (stdout=%q stderr=%q)", err, stdout.String(), stderr.String())
+	}
+	if got := exitErr.ExitCode(); got != 2 {
+		t.Errorf("exit code = %d, want 2", got)
+	}
+	if strings.TrimSpace(stderr.String()) != "" {
+		t.Errorf("stderr should be empty in JSON mode, got: %q", stderr.String())
+	}
+
+	env := assertSingleJSONDoc(t, stdout.Bytes())
+	if env["command"] != "portfolio" {
+		t.Errorf(`command = %v, want "portfolio"`, env["command"])
+	}
+	errObj, _ := env["error"].(map[string]any)
+	if errObj == nil {
+		t.Fatalf("error envelope missing .error")
+	}
+	if errObj["code"] != "unauthenticated" {
+		t.Errorf(`error.code = %v, want "unauthenticated"`, errObj["code"])
+	}
+}
+
+// TestE2E_UnknownCommandIsOneEnvelope: `rh commands nope --json` must also
+// produce exactly one JSON envelope (not plaintext). Regression guard for
+// the "runCommands returned error without an envelope" slice of Codex #1.
+func TestE2E_UnknownCommandIsOneEnvelope(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e build in -short mode")
+	}
+	bin := buildRH(t)
+
+	cmd := exec.Command(bin, "commands", "definitely-not-a-command", "--json")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected ExitError, got %v", err)
+	}
+	if got := exitErr.ExitCode(); got != 5 {
+		t.Errorf("exit code = %d, want 5 (validation)", got)
+	}
+	if strings.TrimSpace(stderr.String()) != "" {
+		t.Errorf("stderr should be empty in JSON mode, got: %q", stderr.String())
+	}
+
+	env := assertSingleJSONDoc(t, stdout.Bytes())
+	errObj, _ := env["error"].(map[string]any)
+	if errObj == nil || errObj["code"] != "validation" {
+		t.Errorf("expected validation error envelope, got %v", env)
+	}
+}
+
+// TestE2E_SuccessfulVersionIsOneEnvelope: sanity check on the success path.
+func TestE2E_SuccessfulVersionIsOneEnvelope(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e build in -short mode")
+	}
+	bin := buildRH(t)
+	out, err := exec.Command(bin, "version", "--json").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := assertSingleJSONDoc(t, out)
+	if env["error"] != nil {
+		t.Errorf("success envelope should have null error, got %v", env["error"])
+	}
+	if env["schema"] != "robinhood-cli/v1" {
+		t.Errorf("schema = %v", env["schema"])
+	}
+}
 ```
 
-- [ ] **Step 2: Run tests (should pass — logic already implemented in earlier tasks)**
+- [ ] **Step 2: Run tests**
 
 Run:
 ```bash
 go test ./cmd/rh/...
 ```
 
-Expected: PASS.
+Expected: PASS. The E2E tests invoke `go build` internally, which adds ~1s each; use `go test -short ./cmd/rh/...` when iterating to skip the rebuilds.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add cmd/rh/exit_test.go
-git commit -m "test(cmd): lock exit-code mapping and subcommand registration"
+git commit -m "test(cmd): pin exit-code map + single-envelope JSON contract (E2E)"
 ```
 
 ---
@@ -3195,7 +3510,7 @@ make build
 ./rh version
 ./rh commands
 ./rh schema --json | head -20
-./rh portfolio --json 2>&1 || true   # expect exit 2 with unauthenticated envelope
+./rh portfolio --json || true   # stdout: one JSON envelope (code unauthenticated), stderr empty, exit 2
 ```
 
 Expected: every step clean; `rh portfolio --json` emits a JSON envelope with `error.code = "unauthenticated"` and exits 2.
@@ -3220,8 +3535,9 @@ Run through this list before calling Plan A shipped:
 - [ ] `./rh version --json` prints a valid envelope with `schema: "robinhood-cli/v1"`
 - [ ] `./rh commands --json` lists at least `portfolio`, `version`, `commands`, `schema`
 - [ ] `./rh schema --json` prints the envelope schema
-- [ ] `./rh portfolio --json` with no env vars returns `error.code = "unauthenticated"` and exits 2
-- [ ] `./rh portfolio --json` with valid tokens returns a success envelope with `data.equity` populated (manual check with real tokens — outside CI)
+- [ ] `./rh portfolio --json` with no env vars: stdout is one JSON envelope with `error.code = "unauthenticated"`, stderr empty, exit 2
+- [ ] `./rh commands nope --json`: stdout is one JSON envelope with `error.code = "validation"`, stderr empty, exit 5
+- [ ] `./rh portfolio --json` with valid tokens returns a success envelope with `data.equity` populated AND does not trigger a refresh call when the access token is still valid (manual check with real tokens — outside CI)
 - [ ] CI workflow passes on the branch
 
 **Tasks in Plan B (next):** Interactive `rh login` with Sheriff workflow, OS keychain storage, remaining 16 data commands (`positions`, `position`, `account`, `quote`, `fundamentals`, `historicals`, `news`, `earnings`, `ratings`, `dividends`, `options-positions`, `orders`, `watchlist`, `search`, `market-hours`, `documents`), `rh logout`.
