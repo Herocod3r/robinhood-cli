@@ -65,14 +65,27 @@ func TestEnsureConfigDir_TightensExistingPerms(t *testing.T) {
 }
 
 func TestEnvNamesAreStable(t *testing.T) {
-	// These names are a public contract; changing them breaks users.
-	if EnvAccessToken != "ROBINHOOD_ACCESS_TOKEN" {
-		t.Error("EnvAccessToken changed")
+	cases := map[string]string{
+		"EnvUsername":     EnvUsername,
+		"EnvPassword":     EnvPassword,
+		"EnvTOTPSecret":   EnvTOTPSecret,
+		"EnvDeviceToken":  EnvDeviceToken,
+		"EnvAccessToken":  EnvAccessToken,
+		"EnvRefreshToken": EnvRefreshToken,
+		"EnvProfile":      EnvProfile,
 	}
-	if EnvRefreshToken != "ROBINHOOD_REFRESH_TOKEN" {
-		t.Error("EnvRefreshToken changed")
+	want := map[string]string{
+		"EnvUsername":     "ROBINHOOD_USERNAME",
+		"EnvPassword":     "ROBINHOOD_PASSWORD",
+		"EnvTOTPSecret":   "ROBINHOOD_TOTP_SECRET",
+		"EnvDeviceToken":  "ROBINHOOD_DEVICE_TOKEN",
+		"EnvAccessToken":  "ROBINHOOD_ACCESS_TOKEN",
+		"EnvRefreshToken": "ROBINHOOD_REFRESH_TOKEN",
+		"EnvProfile":      "ROBINHOOD_PROFILE",
 	}
-	if EnvDeviceToken != "ROBINHOOD_DEVICE_TOKEN" {
-		t.Error("EnvDeviceToken changed")
+	for k, got := range cases {
+		if got != want[k] {
+			t.Errorf("%s = %q, want %q", k, got, want[k])
+		}
 	}
 }
