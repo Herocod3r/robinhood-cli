@@ -11,8 +11,24 @@ import (
 func main() {
 	root := newRootCommand()
 	if err := root.Execute(); err != nil {
+		err = normalizeErr(err)
 		renderTopLevelError(root, err)
 		os.Exit(exitCodeFor(err))
+	}
+}
+
+// normalizeErr wraps non-APIError failures (cobra/pflag built-ins like
+// unknown flag or unknown subcommand) into a *robinhood.APIError with
+// CodeValidation so the JSON envelope stays within the 7-code taxonomy
+// defined in spec section 6.5.
+func normalizeErr(err error) error {
+	if _, ok := err.(*robinhood.APIError); ok {
+		return err
+	}
+	return &robinhood.APIError{
+		Code:    robinhood.CodeValidation,
+		Message: err.Error(),
+		Hint:    "run: rh --help",
 	}
 }
 
