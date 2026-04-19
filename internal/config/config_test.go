@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -40,6 +41,26 @@ func TestConfigDir_IgnoresRelativeXDG(t *testing.T) {
 	want := filepath.Join("/tmp/testhome", ".config", "robinhood-cli")
 	if dir != want {
 		t.Errorf("relative XDG should be ignored: got %q, want %q", dir, want)
+	}
+}
+
+func TestEnsureConfigDir_TightensExistingPerms(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	preexisting := filepath.Join(home, ".config", "robinhood-cli")
+	if err := os.MkdirAll(preexisting, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureConfigDir(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(preexisting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Errorf("perms = %o, want 0o700", perm)
 	}
 }
 
