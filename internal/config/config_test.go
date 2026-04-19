@@ -30,6 +30,19 @@ func TestConfigDir_UsesXDG(t *testing.T) {
 	}
 }
 
+func TestConfigDir_IgnoresRelativeXDG(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "tmp-relative")
+	t.Setenv("HOME", "/tmp/testhome")
+	dir, err := ConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join("/tmp/testhome", ".config", "robinhood-cli")
+	if dir != want {
+		t.Errorf("relative XDG should be ignored: got %q, want %q", dir, want)
+	}
+}
+
 func TestEnvNamesAreStable(t *testing.T) {
 	// These names are a public contract; changing them breaks users.
 	if EnvAccessToken != "ROBINHOOD_ACCESS_TOKEN" {

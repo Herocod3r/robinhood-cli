@@ -23,7 +23,7 @@ const AppName = "robinhood-cli"
 
 // ConfigDir returns $XDG_CONFIG_HOME/robinhood-cli, falling back to $HOME/.config/robinhood-cli.
 func ConfigDir() (string, error) {
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" && filepath.IsAbs(xdg) {
 		return filepath.Join(xdg, AppName), nil
 	}
 	home, err := os.UserHomeDir()
