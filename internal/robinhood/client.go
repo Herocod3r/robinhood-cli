@@ -179,3 +179,9 @@ func decodeOrMap(resp *http.Response, out any) error {
 		return &APIError{Code: CodeValidation, Message: strings.TrimSpace(string(buf)), HTTPStatus: resp.StatusCode}
 	}
 }
+
+// GetJSON is the exported host-scoped GET for endpoint packages.
+// Endpoint subpackages use this rather than the internal getJSON directly.
+func (c *Client) GetJSON(host Host, path string, out any) error {
+	return c.getJSON(host, path, out)
+}
