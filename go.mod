@@ -12,6 +12,7 @@ require (
 	github.com/spf13/pflag v1.0.9
 	github.com/zalando/go-keyring v0.2.5
 	golang.org/x/term v0.21.0
+	gopkg.in/dnaeon/go-vcr.v3 v3.2.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

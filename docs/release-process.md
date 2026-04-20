@@ -23,6 +23,16 @@ Before the first release:
 2. Set `HOMEBREW_TAP_TOKEN` in the `robinhood-cli` repo secrets to a
    fine-grained PAT scoped to `herocod3r/homebrew-tap` with
    Contents: Read+Write.
+3. **Record cassettes for every data endpoint.** Plan A + C shipped
+   the `testdata/cassettes/portfolio.yaml` sample to validate the
+   infrastructure. Before v1.0.0 tagging, a maintainer with a real
+   (burner) Robinhood account must record cassettes for: positions,
+   position, account, quote, fundamentals, historicals, news,
+   earnings, ratings, dividends, options-positions, orders,
+   watchlist, search, market-hours, documents. Follow
+   [Recording cassettes](../CONTRIBUTING.md#recording-cassettes)
+   in `CONTRIBUTING.md`. Confirm `make test-fixtures` passes before
+   cutting the tag.
 
 ## Steps
 

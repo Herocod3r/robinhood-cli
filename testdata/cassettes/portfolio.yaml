@@ -1,0 +1,51 @@
+---
+version: 2
+interactions:
+    - id: 0
+      request:
+        proto: HTTP/1.1
+        proto_major: 1
+        proto_minor: 1
+        content_length: 0
+        transfer_encoding: []
+        trailer: {}
+        host: api.robinhood.com
+        remote_addr: ""
+        request_uri: ""
+        body: ""
+        form: {}
+        headers:
+            Accept:
+                - application/json
+            Authorization:
+                - Bearer REDACTED
+            User-Agent:
+                - robinhood-cli (+https://github.com/herocod3r/robinhood-cli)
+        url: https://api.robinhood.com/portfolios/
+        method: GET
+      response:
+        proto: HTTP/2.0
+        proto_major: 2
+        proto_minor: 0
+        transfer_encoding: []
+        trailer: {}
+        content_length: -1
+        uncompressed: true
+        body: |
+            {
+              "results": [
+                {
+                  "account": "https://api.robinhood.com/accounts/REDACTED/",
+                  "equity": "98234.5000",
+                  "extended_hours_equity": "98240.1200",
+                  "market_value": "72450.1000",
+                  "last_core_equity": "97892.3500"
+                }
+              ]
+            }
+        headers:
+            Content-Type:
+                - application/json
+        status: 200 OK
+        code: 200
+        duration: 0s

@@ -1,4 +1,4 @@
-.PHONY: build test test-race lint fmt vet tidy clean run help
+.PHONY: build test test-race test-fixtures test-contract lint fmt vet tidy clean run help
 
 GO ?= go
 BINARY := rh
@@ -18,6 +18,12 @@ test: ## Run unit tests
 
 test-race: ## Run tests with -race
 	$(GO) test -race ./...
+
+test-fixtures: ## Run cassette-based playback tests (tag: fixtures)
+	$(GO) test -tags fixtures ./internal/robinhood/... -v
+
+test-contract: ## Run JSON schema contract tests (tag: contract)
+	$(GO) test -tags contract ./internal/output/... -v
 
 lint: ## Run golangci-lint
 	golangci-lint run ./...

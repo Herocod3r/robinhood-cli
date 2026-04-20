@@ -117,21 +117,38 @@ Tier 4 is maintainer-only.
 8. Update `CHANGELOG.md` under `[Unreleased]`.
 9. Run `./scripts/sync-skill.sh` if the skill needs updating.
 
-## How to record cassettes
+## Recording cassettes
 
 Cassettes live in `testdata/cassettes/` and are consumed by the
-fixtures tier. Record a new one locally:
+fixtures tier (`//go:build fixtures`, run via `make test-fixtures`).
+Only one sample cassette (`portfolio.yaml`) ships today; recording
+the remaining endpoints is a release-time chore tracked in
+[`docs/release-process.md`](docs/release-process.md).
 
-1. Flip the recorder mode to `recorder.ModeRecordOnly` in your test
-   file (temporary — do not commit).
-2. Run the test against a live session.
-3. Run the sanitizer — the recorder's `BeforeSaveHook` redacts
-   `Authorization`, `access_token`, `refresh_token`, and
-   `device_token`. Double-check the YAML before committing.
-4. Switch the recorder mode back to `ModeReplayOnly` and verify the
-   test passes in replay mode.
-5. `git add testdata/cassettes/<name>.yaml` and open a PR — the
-   gitleaks workflow will re-scan the cassette.
+Sanitization is enforced at **write time** by
+`internal/robinhood/vcr.SanitizeHook`, which is registered on every
+recorder with `recorder.BeforeSaveHook`. The hook redacts the
+`Authorization` header and the JSON fields `access_token`,
+`refresh_token`, and `device_token` before the cassette YAML is
+flushed to disk. **Do NOT commit unredacted bytes** — if the hook is
+somehow bypassed, the gitleaks workflow will block the PR.
+
+To record a new cassette locally:
+
+1. Authenticate with a real (ideally burner) Robinhood account:
+   `./rh login --profile ci-test`.
+2. Temporarily flip the recorder mode in your test file from
+   `recorder.ModeReplayOnly` to `recorder.ModeRecordOnly`. Do NOT
+   commit this change.
+3. Run the test: `go test -tags fixtures -run TestCassette_<name> \
+   ./internal/robinhood/ -v`. This hits live Robinhood and writes
+   `testdata/cassettes/<name>.yaml`.
+4. Open the generated YAML and scan for tokens. The `SanitizeHook`
+   should have replaced them with `REDACTED`, but always eyeball it.
+5. Flip the recorder mode back to `ModeReplayOnly`.
+6. Re-run the test to confirm replay passes.
+7. `git add testdata/cassettes/<name>.yaml` and open a PR — the
+   cassettes workflow will re-scan with gitleaks.
 
 ## Known vulnerabilities
 
