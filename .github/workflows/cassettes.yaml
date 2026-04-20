@@ -1,0 +1,37 @@
+name: cassette secret scan
+
+on:
+  push:
+    paths:
+      - "testdata/cassettes/**"
+      - ".gitleaks.toml"
+      - ".github/workflows/cassettes.yaml"
+  pull_request:
+    paths:
+      - "testdata/cassettes/**"
+      - ".gitleaks.toml"
+      - ".github/workflows/cassettes.yaml"
+  schedule:
+    - cron: "0 10 * * 1"  # weekly Mondays 10:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Ensure cassette dir exists
+        run: mkdir -p testdata/cassettes
+      - uses: gitleaks/gitleaks-action@v2
+        with:
+          args: >-
+            detect
+            --source testdata/cassettes
+            --config .gitleaks.toml
+            --no-banner
+            --report-format sarif
+            --report-path /tmp/gitleaks.sarif
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
