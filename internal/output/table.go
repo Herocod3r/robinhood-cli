@@ -263,6 +263,18 @@ func (w *TableWriter) WriteOrders(rows []endpoints.Order) error {
 	return nil
 }
 
+// WriteWatchlist renders watchlist items.
+func (w *TableWriter) WriteWatchlist(items []endpoints.WatchlistItem) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Symbol", "Last", "Added"})
+	t.SetBorder(false)
+	for _, it := range items {
+		t.Append([]string{it.Symbol, string(it.LastPrice), truncate(it.AddedAt, 10)})
+	}
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
