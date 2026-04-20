@@ -275,6 +275,18 @@ func (w *TableWriter) WriteWatchlist(items []endpoints.WatchlistItem) error {
 	return nil
 }
 
+// WriteSearch renders search results.
+func (w *TableWriter) WriteSearch(rows []endpoints.SearchResult) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Symbol", "Name", "Type", "Tradeable"})
+	t.SetBorder(false)
+	for _, r := range rows {
+		t.Append([]string{r.Symbol, truncate(r.Name, 40), r.Type, fmt.Sprintf("%t", r.Tradeable)})
+	}
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
