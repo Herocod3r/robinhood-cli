@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/pquerna/otp/totp"
 )
 
 // robinhoodOAuthClientID is the same client_id the mobile/web app uses, copied from
@@ -255,4 +257,16 @@ func classifyPasswordErr(body []byte, status int) error {
 	}
 	msg := firstNonEmpty(er.Detail, er.ErrorDescription, er.Error, "password grant rejected")
 	return &APIError{Code: CodeUnauthenticated, Message: msg, HTTPStatus: status}
+}
+
+// TOTPCode returns the current 6-digit TOTP for the given base32 secret.
+// Wraps github.com/pquerna/otp/totp.
+func TOTPCode(secret string) (string, error) {
+	return TOTPCodeAt(secret, time.Now())
+}
+
+// TOTPCodeAt returns the TOTP at a specific instant. Exported primarily for
+// tests that need a deterministic clock.
+func TOTPCodeAt(secret string, at time.Time) (string, error) {
+	return totp.GenerateCode(secret, at)
 }

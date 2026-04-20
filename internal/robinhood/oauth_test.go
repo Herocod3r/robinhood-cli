@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRefreshAccessToken_Success(t *testing.T) {
@@ -258,5 +259,22 @@ func TestRefresh_SendsAPIVersionHeader(t *testing.T) {
 	}
 	if gotUA == "" {
 		t.Fatal("User-Agent header missing on Refresh")
+	}
+}
+
+func TestTOTPCode_Deterministic(t *testing.T) {
+	// Known test vector: a valid base32 secret should produce a 6-digit code.
+	got, err := TOTPCodeAt("JBSWY3DPEHPK3PXP", time.Unix(59, 0).UTC())
+	if err != nil {
+		t.Fatalf("TOTPCodeAt: %v", err)
+	}
+	if len(got) != 6 {
+		t.Fatalf("len = %d, want 6", len(got))
+	}
+}
+
+func TestTOTPCode_RejectsBadSecret(t *testing.T) {
+	if _, err := TOTPCodeAt("not-base32!!!", time.Now()); err == nil {
+		t.Fatalf("expected error for invalid secret")
 	}
 }
