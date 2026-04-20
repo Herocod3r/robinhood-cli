@@ -16,11 +16,19 @@ and does **not** bump the schema.
 
 ## Prerequisites (first release only)
 
-Before the first release, set `HOMEBREW_TAP_TOKEN` in the repo secrets
-to a fine-grained PAT scoped to `herocod3r/homebrew-tap` with
-Contents: Read+Write.
+Before the first release:
+
+1. Bootstrap the tap repo — see
+   [Homebrew tap prerequisites](#homebrew-tap-prerequisites) below.
+2. Set `HOMEBREW_TAP_TOKEN` in the `robinhood-cli` repo secrets to a
+   fine-grained PAT scoped to `herocod3r/homebrew-tap` with
+   Contents: Read+Write.
 
 ## Steps
+
+0. **First time only:** follow
+   [Homebrew tap prerequisites](#homebrew-tap-prerequisites) to
+   bootstrap `herocod3r/homebrew-tap`.
 
 1. Run the full local gate:
 
@@ -86,3 +94,52 @@ Contents: Read+Write.
 4. Skip the full E2E — re-run the commands that exercise the fix plus
    a portfolio smoke test.
 5. Tag, push, follow steps 6-10 above.
+
+## Homebrew tap prerequisites
+
+Run this **once manually** before the first release. It creates the
+`herocod3r/homebrew-tap` repo that GoReleaser's `brews` block pushes
+the formula to on every tag. Requires `gh` authenticated as
+`herocod3r` (or a user with push access to that org).
+
+```bash
+gh repo create herocod3r/homebrew-tap \
+  --public \
+  --description "Homebrew tap for herocod3r tools"
+
+git clone git@github.com:herocod3r/homebrew-tap.git /tmp/tap
+cd /tmp/tap
+git checkout -b main 2>/dev/null || git checkout main
+mkdir -p Formula
+touch Formula/.gitkeep
+cat > README.md <<'EOF'
+# herocod3r/homebrew-tap
+`brew install herocod3r/tap/rh` — read-only Robinhood CLI.
+EOF
+git add README.md Formula/.gitkeep
+git commit -m "init: herocod3r/homebrew-tap"
+git push -u origin main
+gh repo edit --default-branch main
+```
+
+Why each line matters:
+
+- **`--public`** — Homebrew taps must be readable without auth.
+- **`git checkout -b main`** — older `gh` versions default new
+  repos to `master`; force `main` to match `.goreleaser.yaml`'s
+  `brews.repository.branch: main`.
+- **`Formula/.gitkeep`** — GoReleaser writes the formula into
+  `Formula/rh.rb` on the first release; the empty tracked dir
+  avoids a "not found" error on the first push.
+- **`gh repo edit --default-branch main`** — fixes the default
+  branch in GitHub's UI so PRs merge into `main` without a manual
+  retarget step.
+
+Verify:
+
+```bash
+brew tap herocod3r/tap
+```
+
+(`brew install herocod3r/tap/rh` will fail until the first release
+lands — that's expected; GoReleaser writes `Formula/rh.rb` on tag.)
