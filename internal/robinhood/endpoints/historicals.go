@@ -35,9 +35,9 @@ type HistoricalBar struct {
 }
 
 type historicalsResp struct {
-	Symbol     string          `json:"symbol"`
-	Interval   string          `json:"interval"`
-	Span       string          `json:"span"`
+	Symbol      string          `json:"symbol"`
+	Interval    string          `json:"interval"`
+	Span        string          `json:"span"`
 	Historicals []HistoricalBar `json:"historicals"`
 }
 

@@ -20,12 +20,12 @@ func NewInstruments(c *robinhood.Client) *Instruments { return &Instruments{c: c
 
 // Instrument is the subset of the Robinhood /instruments/ payload we use.
 type Instrument struct {
-	ID          string `json:"id"`
-	URL         string `json:"url"`
-	Symbol      string `json:"symbol"`
-	Name        string `json:"name,omitempty"`
-	SimpleName  string `json:"simple_name,omitempty"`
-	Tradeable   bool   `json:"tradeable"`
+	ID             string `json:"id"`
+	URL            string `json:"url"`
+	Symbol         string `json:"symbol"`
+	Name           string `json:"name,omitempty"`
+	SimpleName     string `json:"simple_name,omitempty"`
+	Tradeable      bool   `json:"tradeable"`
 	InstrumentType string `json:"type,omitempty"`
 }
 

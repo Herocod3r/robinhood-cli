@@ -27,12 +27,12 @@ type AccountSummary struct {
 
 type accountsResp struct {
 	Results []struct {
-		AccountNumber    string          `json:"account_number"`
-		BuyingPower      robinhood.Money `json:"buying_power"`
-		Cash             robinhood.Money `json:"cash"`
+		AccountNumber     string          `json:"account_number"`
+		BuyingPower       robinhood.Money `json:"buying_power"`
+		Cash              robinhood.Money `json:"cash"`
 		CashHeldForOrders robinhood.Money `json:"cash_held_for_orders"`
-		SweepEnabled     bool            `json:"sweep_enabled"`
-		MarginBalances   *struct {
+		SweepEnabled      bool            `json:"sweep_enabled"`
+		MarginBalances    *struct {
 			DayTradeCount     int             `json:"day_trade_count"`
 			MarginBalance     robinhood.Money `json:"margin_balance"`
 			UnallocatedMargin robinhood.Money `json:"unallocated_margin_cash"`
@@ -47,10 +47,10 @@ type accountsResp struct {
 }
 
 type unifiedAcctResp struct {
-	BuyingPower    robinhood.Money `json:"buying_power"`
-	Cash           robinhood.Money `json:"cash"`
-	PatternDay     bool            `json:"pattern_day_trader"`
-	DayTradeCount  int             `json:"day_trade_count"`
+	BuyingPower   robinhood.Money `json:"buying_power"`
+	Cash          robinhood.Money `json:"cash"`
+	PatternDay    bool            `json:"pattern_day_trader"`
+	DayTradeCount int             `json:"day_trade_count"`
 }
 
 // Get returns a merged AccountSummary.

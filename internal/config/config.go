@@ -9,13 +9,15 @@ import (
 )
 
 // Env-var names — public contract with users and the skill.
+// gosec G101 fires on names containing "SECRET"/"TOKEN"; these are env-var
+// identifiers, not embedded credentials.
 const (
 	EnvUsername     = "ROBINHOOD_USERNAME"
-	EnvPassword     = "ROBINHOOD_PASSWORD"
-	EnvTOTPSecret   = "ROBINHOOD_TOTP_SECRET"
-	EnvDeviceToken  = "ROBINHOOD_DEVICE_TOKEN"
-	EnvAccessToken  = "ROBINHOOD_ACCESS_TOKEN"
-	EnvRefreshToken = "ROBINHOOD_REFRESH_TOKEN"
+	EnvPassword     = "ROBINHOOD_PASSWORD"      //nolint:gosec // env-var name, not a credential
+	EnvTOTPSecret   = "ROBINHOOD_TOTP_SECRET"   //nolint:gosec // env-var name, not a credential
+	EnvDeviceToken  = "ROBINHOOD_DEVICE_TOKEN"  //nolint:gosec // env-var name, not a credential
+	EnvAccessToken  = "ROBINHOOD_ACCESS_TOKEN"  //nolint:gosec // env-var name, not a credential
+	EnvRefreshToken = "ROBINHOOD_REFRESH_TOKEN" //nolint:gosec // env-var name, not a credential
 	EnvProfile      = "ROBINHOOD_PROFILE"
 )
 

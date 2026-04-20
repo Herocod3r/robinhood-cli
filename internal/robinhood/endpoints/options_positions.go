@@ -53,12 +53,12 @@ type optAggResp struct {
 }
 
 type optInstrument struct {
-	ID              string          `json:"id"`
-	URL             string          `json:"url"`
-	ChainSymbol     string          `json:"chain_symbol"`
-	StrikePrice     robinhood.Money `json:"strike_price"`
-	Type            string          `json:"type"`
-	ExpirationDate  string          `json:"expiration_date"`
+	ID             string          `json:"id"`
+	URL            string          `json:"url"`
+	ChainSymbol    string          `json:"chain_symbol"`
+	StrikePrice    robinhood.Money `json:"strike_price"`
+	Type           string          `json:"type"`
+	ExpirationDate string          `json:"expiration_date"`
 }
 
 // List returns all non-zero aggregated options positions; symbol "" returns all.

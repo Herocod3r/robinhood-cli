@@ -80,13 +80,6 @@ type Sheriff struct {
 	Clock     func() time.Time
 }
 
-func (s *Sheriff) now() time.Time {
-	if s.Clock != nil {
-		return s.Clock()
-	}
-	return time.Now()
-}
-
 func (s *Sheriff) poll() time.Duration {
 	if s.PollEvery > 0 {
 		return s.PollEvery

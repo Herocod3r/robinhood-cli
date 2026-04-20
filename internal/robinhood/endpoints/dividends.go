@@ -31,15 +31,15 @@ type Dividend struct {
 }
 
 type rawDividend struct {
-	Amount         robinhood.Money `json:"amount"`
-	Rate           robinhood.Money `json:"rate"`
-	Position       robinhood.Money `json:"position"`
-	Withholding    robinhood.Money `json:"withholding"`
-	PaidAt         string          `json:"paid_at"`
-	RecordDate     string          `json:"record_date"`
-	PayableDate    string          `json:"payable_date"`
-	Instrument     string          `json:"instrument"`
-	State          string          `json:"state"`
+	Amount      robinhood.Money `json:"amount"`
+	Rate        robinhood.Money `json:"rate"`
+	Position    robinhood.Money `json:"position"`
+	Withholding robinhood.Money `json:"withholding"`
+	PaidAt      string          `json:"paid_at"`
+	RecordDate  string          `json:"record_date"`
+	PayableDate string          `json:"payable_date"`
+	Instrument  string          `json:"instrument"`
+	State       string          `json:"state"`
 }
 
 type dividendsResp struct {

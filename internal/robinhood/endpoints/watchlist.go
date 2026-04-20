@@ -24,8 +24,8 @@ type WatchlistItem struct {
 
 type watchlistsIndex struct {
 	Results []struct {
-		Name       string `json:"name"`
-		URL        string `json:"url"`
+		Name        string `json:"name"`
+		URL         string `json:"url"`
 		DisplayName string `json:"display_name"`
 	} `json:"results"`
 }

@@ -228,12 +228,12 @@ func (w *TableWriter) WriteOptionsPositions(rows []endpoints.OptionPosition) err
 	t.SetBorder(false)
 	for _, r := range rows {
 		for i, leg := range r.Legs {
-			sym, strat, qty, avg := r.Symbol, r.Strategy, string(r.Quantity), string(r.AveragePrice)
+			sym, strategy, qty, avg := r.Symbol, r.Strategy, string(r.Quantity), string(r.AveragePrice)
 			if i > 0 {
-				sym, strat, qty, avg = "", "", "", ""
+				sym, strategy, qty, avg = "", "", "", ""
 			}
 			t.Append([]string{
-				sym, strat, qty, avg,
+				sym, strategy, qty, avg,
 				leg.Type, string(leg.StrikePrice), leg.Expiration, leg.PositionType,
 			})
 		}

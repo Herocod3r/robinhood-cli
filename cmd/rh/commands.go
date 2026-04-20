@@ -49,8 +49,9 @@ type FlagMeta struct {
 
 // buildCommandsPayload walks the Cobra tree and produces the stable discovery list.
 func buildCommandsPayload(root *cobra.Command) []CommandMeta {
-	var out []CommandMeta
-	for _, c := range root.Commands() {
+	cmds := root.Commands()
+	out := make([]CommandMeta, 0, len(cmds))
+	for _, c := range cmds {
 		if c.Hidden {
 			continue
 		}
