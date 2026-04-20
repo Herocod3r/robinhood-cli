@@ -262,6 +262,51 @@ func TestRefresh_SendsAPIVersionHeader(t *testing.T) {
 	}
 }
 
+// TestPasswordGrantWithWorkflow_SendsHeader is the Task 11 deliverable:
+// the post-Sheriff token re-attempt MUST include the
+// X-Robinhood-Challenge-Response-Id header so Robinhood can correlate the
+// validated workflow with this token exchange.
+func TestPasswordGrantWithWorkflow_SendsHeader(t *testing.T) {
+	var sawHeader, sawAPIVer string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawHeader = r.Header.Get("X-Robinhood-Challenge-Response-Id")
+		sawAPIVer = r.Header.Get("X-Robinhood-API-Version")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"a","refresh_token":"r","expires_in":3600}`)
+	}))
+	defer ts.Close()
+	o := &oauth{baseURL: ts.URL, httpClient: ts.Client()}
+	_, err := o.PasswordGrantWithWorkflow(context.Background(), "u", "p", "dev", "", "wf-x")
+	if err != nil {
+		t.Fatalf("PasswordGrantWithWorkflow: %v", err)
+	}
+	if sawHeader != "wf-x" {
+		t.Fatalf("workflow header = %q, want %q", sawHeader, "wf-x")
+	}
+	if sawAPIVer == "" {
+		t.Fatalf("X-Robinhood-API-Version header missing on PasswordGrantWithWorkflow")
+	}
+}
+
+// Regression guard: plain PasswordGrant must NOT send the workflow header —
+// only the post-Sheriff re-attempt does.
+func TestPasswordGrant_DoesNotSendWorkflowHeader(t *testing.T) {
+	var sawHeader string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawHeader = r.Header.Get("X-Robinhood-Challenge-Response-Id")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"a","refresh_token":"r","expires_in":3600}`)
+	}))
+	defer ts.Close()
+	o := &oauth{baseURL: ts.URL, httpClient: ts.Client()}
+	if _, err := o.PasswordGrant(context.Background(), "u", "p", "dev", ""); err != nil {
+		t.Fatalf("PasswordGrant: %v", err)
+	}
+	if sawHeader != "" {
+		t.Fatalf("PasswordGrant unexpectedly sent workflow header: %q", sawHeader)
+	}
+}
+
 func TestTOTPCode_Deterministic(t *testing.T) {
 	// Known test vector: a valid base32 secret should produce a 6-digit code.
 	got, err := TOTPCodeAt("JBSWY3DPEHPK3PXP", time.Unix(59, 0).UTC())
