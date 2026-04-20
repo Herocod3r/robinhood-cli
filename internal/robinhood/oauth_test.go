@@ -1,7 +1,9 @@
 package robinhood
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -113,6 +115,119 @@ func TestRefreshAccessToken_UnknownError(t *testing.T) {
 	}
 	if !strings.Contains(apiErr.Message, "500") {
 		t.Errorf("Message = %q", apiErr.Message)
+	}
+}
+
+func TestPasswordGrant_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth2/token/" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.Form.Get("grant_type"); got != "password" {
+			t.Fatalf("grant_type = %s", got)
+		}
+		if r.Form.Get("device_token") == "" {
+			t.Fatalf("missing device_token")
+		}
+		if r.Header.Get("X-Robinhood-API-Version") == "" {
+			t.Fatalf("missing X-Robinhood-API-Version header")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"a","refresh_token":"r","expires_in":3600,"token_type":"Bearer"}`)
+	}))
+	defer ts.Close()
+
+	o := &oauth{baseURL: ts.URL, httpClient: ts.Client()}
+	sess, err := o.PasswordGrant(context.Background(), "u", "p", "dev-token", "")
+	if err != nil {
+		t.Fatalf("PasswordGrant: %v", err)
+	}
+	if sess.AccessToken != "a" {
+		t.Fatalf("AccessToken = %q", sess.AccessToken)
+	}
+	if sess.DeviceToken != "dev-token" {
+		t.Fatalf("DeviceToken = %q", sess.DeviceToken)
+	}
+	if sess.ExpiresAt.IsZero() {
+		t.Fatalf("ExpiresAt should be set")
+	}
+}
+
+func TestPasswordGrant_SheriffRequired(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"verification_workflow":{"id":"wf-123","workflow_status":"internal_pending"}}`)
+	}))
+	defer ts.Close()
+	o := &oauth{baseURL: ts.URL, httpClient: ts.Client()}
+	_, err := o.PasswordGrant(context.Background(), "u", "p", "dev", "")
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("err = %v, want APIError", err)
+	}
+	if apiErr.Code != CodeSheriffRequired {
+		t.Fatalf("code = %q, want %q", apiErr.Code, CodeSheriffRequired)
+	}
+	if apiErr.WorkflowID != "wf-123" {
+		t.Fatalf("workflow_id = %q, want %q", apiErr.WorkflowID, "wf-123")
+	}
+}
+
+// Codex Fix E: robin_stocks checks `data['verification_workflow']['id']`.
+// Some rollout cohorts instead return the id at the top level. Our
+// classifier must accept either shape.
+func TestPasswordGrant_SheriffRequired_TopLevelID(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"id":"wf-top","detail":"verification required"}`)
+	}))
+	defer ts.Close()
+	o := &oauth{baseURL: ts.URL, httpClient: ts.Client()}
+	_, err := o.PasswordGrant(context.Background(), "u", "p", "dev", "")
+	apiErr, ok := err.(*APIError)
+	if !ok || apiErr.Code != CodeSheriffRequired {
+		t.Fatalf("err = %v, want CodeSheriffRequired", err)
+	}
+	if apiErr.WorkflowID != "wf-top" {
+		t.Fatalf("workflow_id = %q, want %q", apiErr.WorkflowID, "wf-top")
+	}
+}
+
+func TestPasswordGrant_MFARequired(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"mfa_required":true,"mfa_type":"app"}`)
+	}))
+	defer ts.Close()
+	o := &oauth{baseURL: ts.URL, httpClient: ts.Client()}
+	_, err := o.PasswordGrant(context.Background(), "u", "p", "dev", "")
+	apiErr, ok := err.(*APIError)
+	if !ok || apiErr.Code != CodeMFARequired {
+		t.Fatalf("err = %v, want CodeMFARequired", err)
+	}
+}
+
+func TestPasswordGrant_WithMFACode(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		if r.Form.Get("mfa_code") == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"mfa_required":true}`)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"a","refresh_token":"r","expires_in":3600}`)
+	}))
+	defer ts.Close()
+	o := &oauth{baseURL: ts.URL, httpClient: ts.Client()}
+	_, err := o.PasswordGrant(context.Background(), "u", "p", "dev", "123456")
+	if err != nil {
+		t.Fatalf("PasswordGrant with MFA code: %v", err)
 	}
 }
 

@@ -10,6 +10,7 @@ const (
 	CodeUnauthenticated      Code = "unauthenticated"
 	CodeSessionExpired       Code = "session_expired"
 	CodeSheriffRequired      Code = "sheriff_required"
+	CodeMFARequired          Code = "mfa_required"
 	CodeRateLimited          Code = "rate_limited"
 	CodeRobinhoodUnavailable Code = "robinhood_unavailable"
 	CodeNotFound             Code = "not_found"
@@ -24,6 +25,10 @@ type APIError struct {
 	Retryable bool
 	// HTTPStatus is the underlying HTTP status code, 0 if not applicable.
 	HTTPStatus int
+	// WorkflowID is set when Code == CodeSheriffRequired. Used by the login
+	// flow to correlate Sheriff start/respond with the triggering password
+	// grant attempt.
+	WorkflowID string
 }
 
 // Error implements the error interface.
@@ -44,11 +49,12 @@ func (e *APIError) Is(target error) bool {
 }
 
 // ExitCode maps the error code to the CLI exit code per spec section 6.5.
+// MFARequired is grouped with Sheriff — both signal "needs interactive step".
 func (e *APIError) ExitCode() int {
 	switch e.Code {
 	case CodeUnauthenticated, CodeSessionExpired:
 		return 2
-	case CodeSheriffRequired:
+	case CodeSheriffRequired, CodeMFARequired:
 		return 3
 	case CodeRateLimited:
 		return 4
