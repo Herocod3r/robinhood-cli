@@ -186,3 +186,164 @@ func TestSheriff_Start_UserViewDecodeError_FailsFast(t *testing.T) {
 		t.Fatalf("code = %q, want CodeRobinhoodUnavailable", apiErr.Code)
 	}
 }
+
+func TestSheriff_RespondCode_Success(t *testing.T) {
+	var capturedBody string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/challenge/ch-1/respond/" {
+			b, _ := io.ReadAll(r.Body)
+			capturedBody = string(b)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"status":"validated"}`)
+			return
+		}
+		t.Fatalf("unexpected path %s", r.URL.Path)
+	}))
+	defer ts.Close()
+	s := &Sheriff{BaseURL: ts.URL, HTTP: ts.Client()}
+	step := &SheriffStep{InquiryID: "inq-1", ChallengeID: "ch-1", Kind: SheriffSMS}
+	if err := s.RespondCode(context.Background(), step, "123456"); err != nil {
+		t.Fatalf("RespondCode: %v", err)
+	}
+	if !strings.Contains(capturedBody, `"response":"123456"`) {
+		t.Fatalf("body = %q", capturedBody)
+	}
+}
+
+// Fix G: accept "resolved" and "success" in addition to "validated".
+func TestSheriff_RespondCode_AcceptsResolvedAndSuccess(t *testing.T) {
+	for _, status := range []string{"resolved", "success"} {
+		status := status
+		t.Run(status, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, `{"status":%q}`, status)
+			}))
+			defer ts.Close()
+			s := &Sheriff{BaseURL: ts.URL, HTTP: ts.Client()}
+			step := &SheriffStep{ChallengeID: "ch-1", Kind: SheriffSMS}
+			if err := s.RespondCode(context.Background(), step, "000000"); err != nil {
+				t.Fatalf("RespondCode(%s) = %v, want nil", status, err)
+			}
+		})
+	}
+}
+
+// Fix G: unknown statuses are NOT rejected — only explicit failure
+// sentinels are. The login loop will re-check the workflow later.
+func TestSheriff_RespondCode_UnknownStatus_DoesNotReject(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"status":"banana"}`)
+	}))
+	defer ts.Close()
+	s := &Sheriff{BaseURL: ts.URL, HTTP: ts.Client()}
+	step := &SheriffStep{ChallengeID: "ch-1", Kind: SheriffSMS}
+	if err := s.RespondCode(context.Background(), step, "000000"); err != nil {
+		t.Fatalf("RespondCode with unknown status = %v, want nil", err)
+	}
+}
+
+// Fix G: explicit failure sentinels must reject.
+func TestSheriff_RespondCode_RejectsFailed(t *testing.T) {
+	for _, status := range []string{"failed", "declined", "expired"} {
+		status := status
+		t.Run(status, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, `{"status":%q}`, status)
+			}))
+			defer ts.Close()
+			s := &Sheriff{BaseURL: ts.URL, HTTP: ts.Client()}
+			step := &SheriffStep{ChallengeID: "ch-1", Kind: SheriffSMS}
+			err := s.RespondCode(context.Background(), step, "000000")
+			apiErr, ok := err.(*APIError)
+			if !ok || apiErr.Code != CodeSheriffRequired {
+				t.Fatalf("err = %v, want CodeSheriffRequired", err)
+			}
+		})
+	}
+}
+
+func TestSheriff_RespondCode_WrongCode(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"detail":"incorrect code"}`)
+	}))
+	defer ts.Close()
+	s := &Sheriff{BaseURL: ts.URL, HTTP: ts.Client()}
+	step := &SheriffStep{InquiryID: "inq-1", ChallengeID: "ch-1", Kind: SheriffSMS}
+	err := s.RespondCode(context.Background(), step, "000000")
+	apiErr, _ := err.(*APIError)
+	if apiErr == nil || apiErr.Code != CodeSheriffRequired {
+		t.Fatalf("err = %v; want CodeSheriffRequired", err)
+	}
+}
+
+func TestSheriff_WaitPush_Approved(t *testing.T) {
+	var calls int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/push/ch-2/get_prompts_status/" {
+			calls++
+			if calls < 2 {
+				fmt.Fprint(w, `{"challenge_status":"issued"}`)
+				return
+			}
+			fmt.Fprint(w, `{"challenge_status":"validated"}`)
+			return
+		}
+		t.Fatalf("unexpected path %s", r.URL.Path)
+	}))
+	defer ts.Close()
+	s := &Sheriff{BaseURL: ts.URL, HTTP: ts.Client(), PollEvery: time.Millisecond}
+	step := &SheriffStep{InquiryID: "inq-2", ChallengeID: "ch-2", Kind: SheriffPush}
+	if err := s.WaitPush(context.Background(), step); err != nil {
+		t.Fatalf("WaitPush: %v", err)
+	}
+	if calls < 2 {
+		t.Fatalf("calls = %d, want >=2", calls)
+	}
+}
+
+func TestSheriff_WaitPush_Declined(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"challenge_status":"failed"}`)
+	}))
+	defer ts.Close()
+	s := &Sheriff{BaseURL: ts.URL, HTTP: ts.Client(), PollEvery: time.Millisecond}
+	step := &SheriffStep{InquiryID: "inq-3", ChallengeID: "ch-3", Kind: SheriffPush}
+	err := s.WaitPush(context.Background(), step)
+	if err == nil {
+		t.Fatalf("expected error for declined push")
+	}
+	apiErr, _ := err.(*APIError)
+	if apiErr == nil || apiErr.Code != CodeSheriffRequired {
+		t.Fatalf("err = %v; want CodeSheriffRequired", err)
+	}
+}
+
+// Fix F: decode errors in the push poll are terminal, not silent spins.
+func TestSheriff_WaitPush_DecodeError_FailsFast(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"challenge_stat`)
+	}))
+	defer ts.Close()
+	s := &Sheriff{BaseURL: ts.URL, HTTP: ts.Client(), PollEvery: time.Millisecond}
+	step := &SheriffStep{ChallengeID: "ch-bad", Kind: SheriffPush}
+	err := s.WaitPush(context.Background(), step)
+	apiErr, ok := err.(*APIError)
+	if !ok || apiErr.Code != CodeRobinhoodUnavailable {
+		t.Fatalf("err = %v, want CodeRobinhoodUnavailable", err)
+	}
+}
+
+func TestSheriff_WaitPush_RespectsCtxCancel(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"challenge_status":"issued"}`)
+	}))
+	defer ts.Close()
+	s := &Sheriff{BaseURL: ts.URL, HTTP: ts.Client(), PollEvery: 5 * time.Millisecond}
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	step := &SheriffStep{ChallengeID: "ch-t", Kind: SheriffPush}
+	if err := s.WaitPush(ctx, step); err == nil {
+		t.Fatalf("expected ctx error")
+	}
+}

@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -271,4 +272,118 @@ func (s *Sheriff) fetchUserView(ctx context.Context, inquiryID, workflowID strin
 		}
 	}
 	return step, nil
+}
+
+type challengeRespReq struct {
+	Response string `json:"response"`
+}
+
+type challengeRespResp struct {
+	Status string `json:"status"`
+	Detail string `json:"detail"`
+}
+
+// sheriffSuccessStatuses lists the status sentinels that mean "the user
+// cleared the challenge". Robinhood has returned each of these in
+// different rollout cohorts — see Codex Fix G.
+var sheriffSuccessStatuses = map[string]bool{
+	"validated": true,
+	"resolved":  true,
+	"success":   true,
+}
+
+// sheriffFailureStatuses lists the status sentinels that mean "the
+// challenge cannot be completed" (Fix G). Unknown statuses are treated as
+// "continue / inconclusive" — the caller will re-check later.
+var sheriffFailureStatuses = map[string]bool{
+	"failed":   true,
+	"declined": true,
+	"expired":  true,
+}
+
+// RespondCode submits the user-entered code for SMS/email challenges.
+// Success when status ∈ {validated, resolved, success}. Rejects only
+// explicit failure sentinels; unknown statuses are accepted so the next
+// step of the login loop can re-verify against the workflow.
+func (s *Sheriff) RespondCode(ctx context.Context, step *SheriffStep, code string) error {
+	body, _ := json.Marshal(challengeRespReq{Response: code})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.BaseURL+"/challenge/"+step.ChallengeID+"/respond/", bytes.NewReader(body))
+	if err != nil {
+		return &APIError{Code: CodeValidation, Message: err.Error()}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "robinhood-cli (+https://github.com/herocod3r/robinhood-cli)")
+	resp, err := s.HTTP.Do(req)
+	if err != nil {
+		return &APIError{Code: CodeRobinhoodUnavailable, Message: err.Error()}
+	}
+	defer resp.Body.Close()
+	buf, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		var er challengeRespResp
+		_ = json.Unmarshal(buf, &er)
+		msg := firstNonEmpty(er.Detail, strings.TrimSpace(string(buf)), fmt.Sprintf("HTTP %d", resp.StatusCode))
+		return &APIError{Code: CodeSheriffRequired, Message: msg, HTTPStatus: resp.StatusCode}
+	}
+	var cr challengeRespResp
+	if err := json.Unmarshal(buf, &cr); err != nil {
+		// Fix F: decode failures are terminal, not poll-again.
+		return &APIError{Code: CodeRobinhoodUnavailable, Message: "respond decode: " + err.Error()}
+	}
+	if sheriffSuccessStatuses[cr.Status] {
+		return nil
+	}
+	if sheriffFailureStatuses[cr.Status] {
+		msg := firstNonEmpty(cr.Detail, "challenge "+cr.Status)
+		return &APIError{Code: CodeSheriffRequired, Message: msg}
+	}
+	// Unknown status: accept optimistically. The outer login flow will
+	// re-verify against the workflow state; we don't want to reject on a
+	// newly-added status string.
+	return nil
+}
+
+type promptsStatusResp struct {
+	ChallengeStatus string `json:"challenge_status"`
+}
+
+// WaitPush polls /push/<id>/get_prompts_status/ until the server reports
+// a success sentinel. Any explicit failure sentinel becomes an error;
+// unknown statuses continue polling. Context cancellation aborts the poll.
+func (s *Sheriff) WaitPush(ctx context.Context, step *SheriffStep) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return &APIError{Code: CodeSheriffRequired, Message: err.Error()}
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.BaseURL+"/push/"+step.ChallengeID+"/get_prompts_status/", nil)
+		if err != nil {
+			return &APIError{Code: CodeValidation, Message: err.Error()}
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", "robinhood-cli (+https://github.com/herocod3r/robinhood-cli)")
+		resp, err := s.HTTP.Do(req)
+		if err != nil {
+			return &APIError{Code: CodeRobinhoodUnavailable, Message: err.Error()}
+		}
+		var ps promptsStatusResp
+		decodeErr := json.NewDecoder(resp.Body).Decode(&ps)
+		_ = resp.Body.Close()
+		if decodeErr != nil {
+			// Fix F: decode failures are terminal, not poll-again.
+			return &APIError{Code: CodeRobinhoodUnavailable, Message: "push status decode: " + decodeErr.Error()}
+		}
+		if sheriffSuccessStatuses[ps.ChallengeStatus] {
+			return nil
+		}
+		if sheriffFailureStatuses[ps.ChallengeStatus] {
+			return &APIError{Code: CodeSheriffRequired, Message: "push challenge " + ps.ChallengeStatus}
+		}
+		// issued / pending / "" / unknown -> keep polling.
+		select {
+		case <-ctx.Done():
+			return &APIError{Code: CodeSheriffRequired, Message: ctx.Err().Error()}
+		case <-time.After(s.poll()):
+		}
+	}
 }
