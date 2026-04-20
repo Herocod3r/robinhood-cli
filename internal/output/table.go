@@ -287,6 +287,25 @@ func (w *TableWriter) WriteSearch(rows []endpoints.SearchResult) error {
 	return nil
 }
 
+// WriteMarketHours renders market-hours rows.
+func (w *TableWriter) WriteMarketHours(rows []endpoints.MarketHours) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"MIC", "Name", "Date", "Open?", "Opens", "Closes"})
+	t.SetBorder(false)
+	for _, r := range rows {
+		t.Append([]string{
+			r.MIC,
+			truncate(r.Name, 20),
+			r.Date,
+			fmt.Sprintf("%t", r.IsOpen),
+			truncate(r.OpensAt, 20),
+			truncate(r.ClosesAt, 20),
+		})
+	}
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
