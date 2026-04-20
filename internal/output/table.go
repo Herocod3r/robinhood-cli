@@ -202,6 +202,25 @@ func (w *TableWriter) WriteRatings(r *endpoints.Rating) error {
 	return nil
 }
 
+// WriteDividends renders dividend rows.
+func (w *TableWriter) WriteDividends(rows []endpoints.Dividend) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Paid", "Symbol", "Amount", "Rate", "Position", "State"})
+	t.SetBorder(false)
+	for _, d := range rows {
+		t.Append([]string{
+			truncate(d.PaidAt, 10),
+			d.Symbol,
+			string(d.Amount),
+			string(d.Rate),
+			string(d.Position),
+			d.State,
+		})
+	}
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
