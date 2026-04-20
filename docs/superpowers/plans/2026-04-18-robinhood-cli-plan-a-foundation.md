@@ -1904,6 +1904,10 @@ func TestJSON_WriteError(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	var env Envelope
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+		t.Fatal(err)
+	}
 	// The wire shape we promise is `"data": null`. After unmarshalling into
 	// json.RawMessage, that is the non-nil byte slice []byte("null") — so
 	// assert on the raw bytes, not `== nil`.
