@@ -78,6 +78,24 @@ func (w *TableWriter) WriteQuotes(qs []*endpoints.Quote, extended bool) error {
 	return nil
 }
 
+// WriteAccount renders AccountSummary as a key/value table.
+func (w *TableWriter) WriteAccount(a *endpoints.AccountSummary) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Field", "Value"})
+	t.SetBorder(false)
+	t.Append([]string{"Account", a.AccountNumber})
+	t.Append([]string{"Buying power", string(a.BuyingPower)})
+	t.Append([]string{"Cash", string(a.Cash)})
+	t.Append([]string{"Margin balance", string(a.MarginBalance)})
+	t.Append([]string{"Sweep enabled", fmt.Sprintf("%t", a.SweepEnabled)})
+	t.Append([]string{"Pattern day trader", fmt.Sprintf("%t", a.PatternDayTrader)})
+	t.Append([]string{"Day trade count", fmt.Sprintf("%d", a.DayTradeCount)})
+	t.Append([]string{"Instant used", string(a.InstantUsed)})
+	t.Append([]string{"Instant available", string(a.InstantAvailable)})
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
