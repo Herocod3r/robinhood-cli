@@ -30,8 +30,8 @@ func TestPlanB_CommandsRegistered(t *testing.T) {
 func TestPlanB_AllCommandsHaveAnnotations(t *testing.T) {
 	root := newRootCommand()
 	for _, c := range root.Commands() {
-		if c.Name() == "help" {
-			continue
+		if c.Name() == "help" || c.Name() == "completion" {
+			continue // Cobra-generated, not part of the Plan B surface.
 		}
 		if c.Annotations["category"] == "" {
 			t.Errorf("command %q missing category annotation", c.Name())
@@ -48,7 +48,7 @@ func TestPlanB_PayloadSurfacesCategoryStability(t *testing.T) {
 	root := newRootCommand()
 	payload := buildCommandsPayload(root)
 	for _, p := range payload {
-		if p.Name == "help" {
+		if p.Name == "help" || p.Name == "completion" {
 			continue
 		}
 		if p.Category == "" {
