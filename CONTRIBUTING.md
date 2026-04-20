@@ -133,6 +133,33 @@ fixtures tier. Record a new one locally:
 5. `git add testdata/cassettes/<name>.yaml` and open a PR — the
    gitleaks workflow will re-scan the cassette.
 
+## Known vulnerabilities
+
+`govulncheck ./...` runs on every PR (`vuln` job in `ci.yaml`). CI is
+pinned to the Go toolchain resolved from `go.mod` (currently `go 1.25.x`
+via `actions/setup-go@v5 go-version: "1.22"` which bumps forward to
+satisfy `go.mod`), where no exploitable stdlib findings apply.
+
+Local contributors running newer Go toolchains (e.g. `go1.26.0`) may see
+findings from `govulncheck` that are **not in the CI matrix**. Current
+known-noisy stdlib findings when building on `go1.26.0` locally:
+
+| ID            | Package     | Fixed in  | Notes |
+|---------------|-------------|-----------|-------|
+| GO-2026-4947  | crypto/x509 | go1.26.2  | chain building; called via TLS |
+| GO-2026-4946  | crypto/x509 | go1.26.2  | policy validation; called via TLS |
+| GO-2026-4870  | crypto/tls  | go1.26.2  | TLS 1.3 KeyUpdate DoS |
+| GO-2026-4866  | crypto/x509 | go1.26.2  | name-constraint auth bypass |
+| GO-2026-4602  | os          | go1.26.1  | FileInfo Root escape |
+| GO-2026-4601  | net/url     | go1.26.1  | IPv6 host literal parsing |
+| GO-2026-4600  | crypto/x509 | go1.26.1  | malformed cert panic |
+| GO-2026-4599  | crypto/x509 | go1.26.1  | email-constraint enforcement |
+
+If you are on `go1.26.x`, update to `go1.26.2` or newer to clear them.
+The CI job is authoritative — if it passes, the release toolchain is
+clean. Do not silence these findings in `.golangci.yml` or skip the
+job; they indicate the contributor's local stdlib is out of date.
+
 ## Release cadence
 
 - **Patch** releases go out as needed when a bug blocks users.
