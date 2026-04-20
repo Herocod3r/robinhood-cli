@@ -1,4 +1,4 @@
-.PHONY: build test test-race lint fmt vet tidy clean run help
+.PHONY: build test test-race test-fixtures test-contract lint fmt vet tidy clean run help
 
 GO ?= go
 BINARY := rh
@@ -19,6 +19,12 @@ test: ## Run unit tests
 test-race: ## Run tests with -race
 	$(GO) test -race ./...
 
+test-fixtures: ## Run cassette-based playback tests (tag: fixtures)
+	$(GO) test -tags fixtures ./internal/robinhood/... -v
+
+test-contract: ## Run JSON schema contract tests (tag: contract)
+	$(GO) test -tags contract ./internal/output/... -v
+
 lint: ## Run golangci-lint
 	golangci-lint run ./...
 
@@ -37,3 +43,16 @@ clean: ## Remove build artifacts
 
 run: build ## Build and run
 	./$(BINARY) $(ARGS)
+
+# ---- Release ----
+# GoReleaser is invoked via `go run` so contributors do not have to
+# install it locally; the version is pinned to match .github/workflows/release.yaml.
+GORELEASER ?= go run github.com/goreleaser/goreleaser/v2@v2.4.4
+
+.PHONY: release-dry-run release-snapshot
+
+release-dry-run: ## Full release snapshot (all platforms, no publish)
+	$(GORELEASER) release --snapshot --clean --skip=publish
+
+release-snapshot: ## Fast single-target snapshot build
+	$(GORELEASER) build --snapshot --clean --single-target

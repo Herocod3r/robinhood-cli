@@ -1,0 +1,15 @@
+{
+  "symbol": "AAPL",
+  "summary": {
+    "num_buy_ratings": 28,
+    "num_hold_ratings": 5,
+    "num_sell_ratings": 1
+  },
+  "ratings": [
+    {
+      "type": "buy",
+      "text": "Upgraded on strong iPhone demand.",
+      "published_at": "2026-04-15T12:00:00Z"
+    }
+  ]
+}

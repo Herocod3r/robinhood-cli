@@ -13,7 +13,11 @@ func init() {
 		Use:     "portfolio",
 		Aliases: []string{"pf"},
 		Short:   "Show account portfolio value, equity, cash, buying power",
-		RunE:    runPortfolio,
+		Annotations: map[string]string{
+			"category":  "portfolio",
+			"stability": "green",
+		},
+		RunE: runPortfolio,
 	}
 	register(c)
 }
@@ -24,7 +28,7 @@ func runPortfolio(cmd *cobra.Command, args []string) error {
 		return err // main() writes the envelope
 	}
 
-	summary, err := endpoints.NewPortfolio(client).Get()
+	summary, err := endpoints.NewPortfolio(client).Get(cmd.Context())
 	if err != nil {
 		return err // main() writes the envelope
 	}

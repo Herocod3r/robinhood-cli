@@ -1,0 +1,16 @@
+{
+  "symbol": "AAPL",
+  "interval": "day",
+  "span": "month",
+  "bars": [
+    {
+      "begins_at": "2026-04-01T13:30:00Z",
+      "open_price": "180.10",
+      "close_price": "181.44",
+      "high_price": "182.00",
+      "low_price": "179.90",
+      "volume": 52300000,
+      "session": "reg"
+    }
+  ]
+}

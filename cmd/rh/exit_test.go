@@ -141,11 +141,16 @@ func TestE2E_UnauthenticatedPortfolioIsOneEnvelope(t *testing.T) {
 	bin := buildRH(t)
 
 	cmd := exec.Command(bin, "portfolio", "--json")
-	// Scrub any ambient tokens so we deterministically hit unauth path.
+	// Scrub any ambient tokens and point the keychain at an empty temp dir so
+	// we deterministically hit the unauth path even on dev machines where the
+	// user has a real keychain entry. (Task 14 added keychain fallback; the
+	// subprocess inherits os.Environ by default.)
 	cmd.Env = append(os.Environ(),
 		"ROBINHOOD_ACCESS_TOKEN=",
 		"ROBINHOOD_REFRESH_TOKEN=",
 		"ROBINHOOD_DEVICE_TOKEN=",
+		"ROBINHOOD_KEYCHAIN_BACKEND=file",
+		"XDG_CONFIG_HOME="+t.TempDir(),
 	)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

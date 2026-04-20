@@ -1,0 +1,120 @@
+---
+name: robinhood-cli
+description: |
+  Use when the user asks about their Robinhood portfolio, positions, trades,
+  dividends, or investment performance. Shells out to the read-only `rh` CLI
+  and analyzes JSON output. Do NOT activate for general stock-market questions
+  unless the user explicitly asks about their holdings.
+---
+
+# robinhood-cli
+
+You have access to the `rh` CLI — a local, read-only Robinhood client. You
+cannot place, cancel, or modify trades; you cannot mutate watchlists or move
+funds. Only read operations are available.
+
+Always invoke commands with `--json` and parse stdout. Check the exit code
+before parsing.
+
+## On first use per session
+
+Run these two commands once per session:
+
+```bash
+rh version --json     # confirms schema is robinhood-cli/v1
+rh commands --json    # discover available commands, flags, stability
+```
+
+If `schema` is anything other than `robinhood-cli/v1`, stop and tell the user
+to upgrade with `brew upgrade rh` (Homebrew) or `go install github.com/herocod3r/robinhood-cli/cmd/rh@latest`.
+
+The user invokes this skill using the prefix `/robinhood-cli`
+(or equivalent trigger phrases described in the front-matter).
+
+## Invariants
+
+1. **Never run `rh login`** yourself. On exit code 2 (`unauthenticated` /
+   `session_expired`) or 3 (`sheriff_required` / `mfa_required`), tell the
+   user to run `rh login` in their terminal and stop.
+2. **Batch quotes.** `rh quote A B C` is one call. Don't loop per symbol.
+3. **Prefer `rh position <SYMBOL>`** over `rh positions | jq ...` when the
+   user asked about a single ticker.
+4. **Don't cache between turns.** Positions and prices change; re-invoke.
+5. **Money is strings.** Compare as decimal strings or via a decimal library
+   in whatever code you write; never as float64.
+6. **Cite freshness.** Every envelope has `generated_at` — when the answer is
+   price-sensitive (values, changes), tell the user the time.
+
+## Exit codes
+
+| Code | Meaning | Action |
+|---|---|---|
+| 0 | OK | Parse `.data`, answer |
+| 1 | Runtime / Robinhood unavailable | Surface `.error.message` to user, stop |
+| 2 | Not logged in / expired | Say: "run `rh login`". Stop. |
+| 3 | Sheriff / MFA required | Same as 2. Stop. |
+| 4 | Rate limited | Wait per `.error.hint`, retry once |
+| 5 | Validation (bad args) | Re-read `rh <cmd> --help`, try again |
+
+## Workflows (guidance — CLI is authoritative via `rh commands`)
+
+### "How's my portfolio?"
+```
+rh portfolio --json
+rh positions --nonzero --sort value --json
+```
+Compute sector concentration; call out top gainers/losers; flag any single
+position >20% of market value. See `references/sector-concentration.md`.
+
+### "Analyze my trades this year"
+```
+rh orders --since 2026-01-01 --state filled --json
+```
+Group by symbol; compute realized P&L by pairing buys and sells FIFO. Flag
+wash sales as a caveat ("not computed — consult your 1099-B"). See
+`references/trade-analysis.md`.
+
+### "Should I add more <TICKER>?"
+```
+rh position TICKER --json
+rh fundamentals TICKER --json
+rh quote TICKER --json
+rh news TICKER --limit 5 --json
+```
+Summarize the four angles side by side. Do NOT give buy/sell advice. Call out
+current concentration relative to total portfolio.
+
+### "Compare <A> <B> <C>"
+```
+rh fundamentals A B C --json
+rh quote A B C --json
+```
+Side-by-side table: P/E, yield, 52-week range, current price.
+
+### "What dividends have I received?"
+```
+rh dividends --year YYYY --json
+```
+Group by symbol, sum, list top-5 contributors.
+
+## When NOT to shell out
+
+- General market questions (e.g., "what is a P/E ratio?") → general knowledge.
+- Stocks the user does not hold, generic research → answer from training only if
+  the user does not ask for fresh data.
+- If the user has not said this is their account → ask first. Do not assume.
+
+## Presenting
+
+- Answer first, commands second. Users don't want to read `jq` invocations.
+- Use short tables for breakdowns; reserve long JSON for when the user asks.
+- Cite `generated_at` for price-sensitive numbers.
+- Note material divergence between `extended_hours_price` and `last_price`.
+- Do not recommend actions; present facts.
+
+## References
+
+- `references/trade-analysis.md` — buy/sell lot pairing, realized P&L algorithm
+- `references/sector-concentration.md` — sector grouping, concentration alerts
+- `references/output-schema.md` — every command's `data` JSON shape (pointer
+  to the authoritative doc in the CLI repo at `docs/JSON_SCHEMA.md`)

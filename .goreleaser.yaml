@@ -1,0 +1,73 @@
+version: 2
+
+project_name: rh
+
+before:
+  hooks:
+    - go mod tidy
+    - ./scripts/sync-skill.sh
+
+builds:
+  - id: rh
+    main: ./cmd/rh
+    binary: rh
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/herocod3r/robinhood-cli/internal/buildinfo.Version={{.Version}}
+      - -X github.com/herocod3r/robinhood-cli/internal/buildinfo.Commit={{.ShortCommit}}
+
+archives:
+  - id: default
+    builds: [rh]
+    name_template: "rh_{{.Version}}_{{.Os}}_{{.Arch}}"
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - src: "internal/skill/assets/claude-code/robinhood-cli/**/*"
+        dst: "skills/claude-code/robinhood-cli"
+        strip_parent: true
+      - src: "internal/skill/assets/codex/robinhood-cli/**/*"
+        dst: "skills/codex/robinhood-cli"
+        strip_parent: true
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^chore:"
+      - "^docs:"
+
+brews:
+  - name: rh
+    repository:
+      owner: herocod3r
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/herocod3r/robinhood-cli
+    description: "Read-only Robinhood CLI for portfolio research"
+    license: MIT
+    install: |
+      bin.install "rh"
+      pkgshare.install "skills"
+    test: |
+      assert_match "robinhood-cli/v1", shell_output("#{bin}/rh version --json")
+
+release:
+  github:
+    owner: herocod3r
+    name: robinhood-cli
+  draft: false
+  prerelease: auto

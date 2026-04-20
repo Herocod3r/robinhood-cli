@@ -1,0 +1,12 @@
+[
+  {
+    "mic": "XNAS",
+    "name": "NASDAQ",
+    "date": "2026-04-20",
+    "is_open": true,
+    "opens_at": "2026-04-20T13:30:00Z",
+    "closes_at": "2026-04-20T20:00:00Z",
+    "extended_opens_at": "2026-04-20T08:00:00Z",
+    "extended_closes_at": "2026-04-21T00:00:00Z"
+  }
+]

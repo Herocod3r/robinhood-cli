@@ -1,0 +1,37 @@
+title = "robinhood-cli cassette scan"
+
+# Custom rules tuned for Robinhood OAuth tokens that appear in recorded
+# HTTP cassettes under testdata/cassettes/. Default gitleaks rules miss
+# these because Robinhood tokens are not prefixed (no rh_, no rha_, etc.).
+#
+# Every rule carries an allowlist for the sentinel values our cassette
+# sanitizer (`BeforeSaveHook` in internal/robinhood/vcr_test.go, Wave C5
+# Task 19) substitutes in. If you add a new sentinel, add it here too.
+
+[[rules]]
+id = "robinhood-bearer"
+description = "Authorization: Bearer <robinhood token>"
+regex = '''(?i)bearer\s+[A-Za-z0-9_\-]{20,}'''
+[rules.allowlist]
+regexes = ['''(?i)bearer\s+(REDACTED|recorded-token|test-token)''']
+
+[[rules]]
+id = "robinhood-access-token"
+description = "access_token JSON field"
+regex = '''"access_token"\s*:\s*"[^"]{20,}"'''
+[rules.allowlist]
+regexes = ['''"access_token"\s*:\s*"(REDACTED|recorded-token|test-token|a)"''']
+
+[[rules]]
+id = "robinhood-refresh-token"
+description = "refresh_token JSON field"
+regex = '''"refresh_token"\s*:\s*"[^"]{20,}"'''
+[rules.allowlist]
+regexes = ['''"refresh_token"\s*:\s*"(REDACTED|recorded-token|test-token|r)"''']
+
+[[rules]]
+id = "robinhood-device-token"
+description = "device_token UUID"
+regex = '''"device_token"\s*:\s*"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"'''
+[rules.allowlist]
+regexes = ['''"device_token"\s*:\s*"(REDACTED|dt-fixed|dt-2|dev-token|dt-uuid)"''']

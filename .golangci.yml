@@ -1,6 +1,7 @@
 run:
-  timeout: 3m
+  timeout: 5m
   tests: true
+  go: "1.22"
 
 linters:
   disable-all: true
@@ -10,27 +11,37 @@ linters:
     - ineffassign
     - staticcheck
     - unused
-    - gofmt
     - goimports
+    - gofmt
     - gosec
     - revive
+    - unconvert
+    - prealloc
+    - bodyclose
     - misspell
 
 linters-settings:
   gosec:
     excludes:
-      - G104   # unhandled errors checked by errcheck
+      - G104   # unhandled errors -- errcheck already flags meaningful ones
+      - G304   # file inclusion via variable -- paths are validated and writes use 0600
   revive:
     severity: warning
     rules:
       - name: var-naming
       - name: exported
-      - name: unused-parameter
       - name: blank-imports
       - name: context-as-argument
+      - name: unused-parameter
+        disabled: true
 
 issues:
   max-same-issues: 0
   exclude-rules:
     - path: _test\.go
-      linters: [gosec, errcheck]
+      linters: [gosec, errcheck, bodyclose]
+    # Stable public API in internal/config/ — renaming ConfigDir/ConfigFilePath
+    # would break every caller for a purely cosmetic naming win.
+    - path: internal/config/.*\.go
+      linters: [revive]
+      text: "stutters"

@@ -1,6 +1,7 @@
 package endpoints
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -44,7 +45,7 @@ func TestPortfolio_Get(t *testing.T) {
 	c.SetSession(&robinhood.Session{AccessToken: "tok", ExpiresAt: time.Now().Add(time.Hour)})
 
 	p := NewPortfolio(c)
-	got, err := p.Get()
+	got, err := p.Get(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func TestPortfolio_Get_EmptyResults(t *testing.T) {
 	c.SetSession(&robinhood.Session{AccessToken: "tok", ExpiresAt: time.Now().Add(time.Hour)})
 
 	p := NewPortfolio(c)
-	_, err := p.Get()
+	_, err := p.Get(context.Background())
 	apiErr, ok := err.(*robinhood.APIError)
 	if !ok || apiErr.Code != robinhood.CodeNotFound {
 		t.Errorf("got %v", err)

@@ -55,3 +55,41 @@ jobs:
           ./rh version --json
           ./rh commands --json | head -5
           ./rh schema --json | head -10
+
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: Run JSON schema contract tests
+        run: make test-contract
+
+  skill-sync-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check skill-sync drift
+        run: |
+          if [ -x ./scripts/sync-skill.sh ]; then
+            ./scripts/sync-skill.sh
+            git diff --exit-code internal/skill/assets/ \
+              || (echo "::error::sync-skill.sh produces a diff; run ./scripts/sync-skill.sh locally and commit" && exit 1)
+          else
+            echo "scripts/sync-skill.sh not yet present (Plan C Wave C1 not merged) -- skipping"
+          fi

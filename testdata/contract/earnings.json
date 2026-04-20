@@ -1,0 +1,10 @@
+[
+  {
+    "symbol": "AAPL",
+    "year": 2026,
+    "quarter": 1,
+    "report_at": "2026-01-25",
+    "eps": {"estimate": "2.10", "actual": "2.18"},
+    "call": {"datetime": "2026-01-25T21:30:00Z", "broadcast_url": "https://example.com/broadcast"}
+  }
+]

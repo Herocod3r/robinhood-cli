@@ -1,0 +1,18 @@
+[
+  {
+    "symbol": "AAPL",
+    "open": "180.12",
+    "high": "183.50",
+    "low": "179.88",
+    "volume": "52300000",
+    "average_volume": "58000000",
+    "average_volume_2_weeks": "55000000",
+    "high_52_weeks": "199.62",
+    "low_52_weeks": "164.08",
+    "dividend_yield": "0.0053",
+    "market_cap": "2812000000000",
+    "pe_ratio": "29.5",
+    "description": "Apple Inc. designs, manufactures, and markets smartphones...",
+    "instrument": "https://api.robinhood.com/instruments/450dfc6d-5510-4d40-abfb-f633b7d9be3e/"
+  }
+]

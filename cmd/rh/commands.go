@@ -18,19 +18,24 @@ func init() {
 		Use:   "commands [name]",
 		Short: "List commands (for scripts/skills); pass a name for one command's detail",
 		Args:  cobra.MaximumNArgs(1),
-		RunE:  runCommands,
+		Annotations: map[string]string{
+			"category":  "meta",
+			"stability": "green",
+		},
+		RunE: runCommands,
 	}
 	register(c)
 }
 
 // CommandMeta is the stable discovery payload.
 type CommandMeta struct {
-	Name     string     `json:"name"`
-	Aliases  []string   `json:"aliases,omitempty"`
-	Summary  string     `json:"summary"`
-	Category string     `json:"category,omitempty"`
-	Args     []string   `json:"args,omitempty"`
-	Flags    []FlagMeta `json:"flags,omitempty"`
+	Name      string     `json:"name"`
+	Aliases   []string   `json:"aliases,omitempty"`
+	Summary   string     `json:"summary"`
+	Category  string     `json:"category,omitempty"`
+	Stability string     `json:"stability,omitempty"` // "green" | "yellow" | "red"
+	Args      []string   `json:"args,omitempty"`
+	Flags     []FlagMeta `json:"flags,omitempty"`
 }
 
 // FlagMeta is a single flag in the discovery payload.
@@ -44,16 +49,19 @@ type FlagMeta struct {
 
 // buildCommandsPayload walks the Cobra tree and produces the stable discovery list.
 func buildCommandsPayload(root *cobra.Command) []CommandMeta {
-	var out []CommandMeta
-	for _, c := range root.Commands() {
+	cmds := root.Commands()
+	out := make([]CommandMeta, 0, len(cmds))
+	for _, c := range cmds {
 		if c.Hidden {
 			continue
 		}
 		out = append(out, CommandMeta{
-			Name:    c.Name(),
-			Aliases: c.Aliases,
-			Summary: c.Short,
-			Flags:   flagsFor(c),
+			Name:      c.Name(),
+			Aliases:   c.Aliases,
+			Summary:   c.Short,
+			Category:  c.Annotations["category"],
+			Stability: c.Annotations["stability"],
+			Flags:     flagsFor(c),
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -115,7 +123,15 @@ func printCommandsTable(out io.Writer, payload []CommandMeta) error {
 		if len(c.Aliases) > 0 {
 			aliases = " (" + strings.Join(c.Aliases, ", ") + ")"
 		}
-		if _, err := fmt.Fprintf(out, "%-20s%s  %s\n", c.Name+aliases, "", c.Summary); err != nil {
+		cat := c.Category
+		if cat == "" {
+			cat = "-"
+		}
+		stab := c.Stability
+		if stab == "" {
+			stab = "-"
+		}
+		if _, err := fmt.Fprintf(out, "%-20s %-10s %-8s %s\n", c.Name+aliases, cat, stab, c.Summary); err != nil {
 			return err
 		}
 	}

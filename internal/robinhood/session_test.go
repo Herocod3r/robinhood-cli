@@ -87,3 +87,96 @@ func TestSession_NeedsImmediateRefresh(t *testing.T) {
 		})
 	}
 }
+
+func TestSession_MarshalRoundTrip(t *testing.T) {
+	in := &Session{
+		Username:     "alice@example.com",
+		AccessToken:  "a.b.c",
+		RefreshToken: "r.e.f",
+		DeviceToken:  "dt-uuid",
+		ExpiresAt:    time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC),
+	}
+	data, err := in.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	out, err := UnmarshalSession(data)
+	if err != nil {
+		t.Fatalf("UnmarshalSession: %v", err)
+	}
+	if out.Username != in.Username || out.AccessToken != in.AccessToken ||
+		out.RefreshToken != in.RefreshToken || out.DeviceToken != in.DeviceToken ||
+		!out.ExpiresAt.Equal(in.ExpiresAt) {
+		t.Fatalf("round-trip mismatch: got %+v want %+v", out, in)
+	}
+	// Ephemeral is an in-memory flag — keychain-persisted sessions are never ephemeral.
+	if out.Ephemeral {
+		t.Fatalf("UnmarshalSession should return Ephemeral=false, got true")
+	}
+}
+
+func TestSaveAndLoadFromKeychain(t *testing.T) {
+	t.Setenv("ROBINHOOD_KEYCHAIN_BACKEND", "file")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	in := &Session{
+		Username: "x@y", AccessToken: "a", RefreshToken: "r",
+		DeviceToken: "d", ExpiresAt: time.Now().Add(time.Hour).UTC().Truncate(time.Second),
+	}
+	if err := in.SaveToKeychain("default"); err != nil {
+		t.Fatalf("SaveToKeychain: %v", err)
+	}
+	out, err := LoadFromKeychain("default")
+	if err != nil {
+		t.Fatalf("LoadFromKeychain: %v", err)
+	}
+	if out.AccessToken != in.AccessToken {
+		t.Fatalf("got %q want %q", out.AccessToken, in.AccessToken)
+	}
+	if out.Ephemeral {
+		t.Fatalf("keychain-loaded session should never be ephemeral")
+	}
+	if err := ClearKeychain("default"); err != nil {
+		t.Fatalf("ClearKeychain: %v", err)
+	}
+	if _, err := LoadFromKeychain("default"); err == nil {
+		t.Fatalf("LoadFromKeychain after Clear should fail")
+	}
+}
+
+func TestSaveToKeychain_RefusesEphemeral(t *testing.T) {
+	t.Setenv("ROBINHOOD_KEYCHAIN_BACKEND", "file")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	s := &Session{AccessToken: "a", RefreshToken: "r", Ephemeral: true}
+	if err := s.SaveToKeychain("default"); err == nil {
+		t.Fatal("SaveToKeychain must refuse ephemeral sessions")
+	}
+}
+
+func TestLoadSessionFromEnv_IsEphemeral(t *testing.T) {
+	t.Setenv("ROBINHOOD_ACCESS_TOKEN", "acc")
+	t.Setenv("ROBINHOOD_REFRESH_TOKEN", "ref")
+	s, err := LoadSessionFromEnv()
+	if err != nil {
+		t.Fatalf("LoadSessionFromEnv: %v", err)
+	}
+	if !s.Ephemeral {
+		t.Fatal("env-loaded session must have Ephemeral=true")
+	}
+}
+
+func TestKeychain_InvalidProfileRejected(t *testing.T) {
+	t.Setenv("ROBINHOOD_KEYCHAIN_BACKEND", "file")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	s := &Session{AccessToken: "a", RefreshToken: "r"}
+	if err := s.SaveToKeychain("../evil"); err == nil {
+		t.Fatal("SaveToKeychain must reject path-traversal profile")
+	}
+	if _, err := LoadFromKeychain("../evil"); err == nil {
+		t.Fatal("LoadFromKeychain must reject path-traversal profile")
+	}
+	if err := ClearKeychain("../evil"); err == nil {
+		t.Fatal("ClearKeychain must reject path-traversal profile")
+	}
+}

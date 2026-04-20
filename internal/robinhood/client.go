@@ -1,6 +1,7 @@
 package robinhood
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/herocod3r/robinhood-cli/internal/config"
 )
 
 // Host enumerates the Robinhood API hosts we talk to.
@@ -36,6 +39,14 @@ type Client struct {
 
 	mu      sync.Mutex
 	session *Session
+	profile string
+
+	// ephemeralMu serializes refresh calls for ephemeral (env-loaded) sessions.
+	// The file-lock in WithRefreshLock guards multi-process keychain writes;
+	// ephemeral sessions never touch the keychain and so bypass that lock,
+	// but two goroutines in the same process can still race on the same
+	// refresh token. Serialize them here.
+	ephemeralMu sync.Mutex
 }
 
 // NewClient returns a client pointed at production hosts.
@@ -51,6 +62,7 @@ func NewClientWithHosts(apiBase, nummusBase, phoenixBase string, h *http.Client)
 		phoenixBase: phoenixBase,
 		http:        h,
 		oauth:       &oauth{baseURL: apiBase, httpClient: h},
+		profile:     "default",
 	}
 }
 
@@ -68,6 +80,43 @@ func (c *Client) Session() *Session {
 	return c.session
 }
 
+// SetProfile records which keychain profile this client is authenticated for.
+// Defaults to "default" so tests that don't call SetProfile still work.
+// Invalid names are rejected; we log and keep the previous value so callers
+// that cannot return an error (Task 14 wiring) still degrade gracefully.
+// Typed callers can use SetProfileChecked when they need the error.
+func (c *Client) SetProfile(p string) {
+	_ = c.SetProfileChecked(p)
+}
+
+// SetProfileChecked validates and sets the profile, returning an error when
+// the input fails the profile-name policy. On error the previous value is
+// retained.
+func (c *Client) SetProfileChecked(p string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if p == "" {
+		c.profile = "default"
+		return nil
+	}
+	if err := config.ValidProfile(p); err != nil {
+		// Keep the previous value; caller can observe the error.
+		return err
+	}
+	c.profile = p
+	return nil
+}
+
+// Profile returns the keychain profile this client uses for refresh persistence.
+func (c *Client) Profile() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.profile == "" {
+		return "default"
+	}
+	return c.profile
+}
+
 // baseFor returns the base URL for the given host.
 func (c *Client) baseFor(h Host) string {
 	switch h {
@@ -81,43 +130,75 @@ func (c *Client) baseFor(h Host) string {
 }
 
 // ensureFresh refreshes pre-emptively if the session is expired.
+//
+// When a refresh is needed, it runs under WithRefreshLock so that concurrent
+// `rh` processes don't race on the same refresh token. Inside the lock we
+// re-read the keychain because another process may have just rotated
+// tokens; if the fresh session is still expired we refresh THAT session
+// (not the stale in-memory one) — see Fix B. For ephemeral env-loaded
+// sessions we never touch the keychain.
 func (c *Client) ensureFresh() error {
-	c.mu.Lock()
-	s := c.session
-	c.mu.Unlock()
+	s := c.Session()
 	if s == nil {
 		return &APIError{Code: CodeUnauthenticated, Message: "no session", Hint: "run: rh login"}
 	}
-	// Only proactively refresh when we KNOW we need to:
-	// - no access token (but refresh available), or
-	// - access token present with a known-expired ExpiresAt.
-	// Unknown expiry (env-loaded sessions) trusts the access token and
-	// lets 401 drive refresh. Otherwise every CLI invocation would burn
-	// the refresh token once before trying the live access token.
-	if s.NeedsImmediateRefresh() {
+	if !s.NeedsImmediateRefresh() {
+		return nil
+	}
+	if s.Ephemeral {
+		// Env-sourced session: refresh in memory only, never persist.
+		// Serialize refreshes within this process so two goroutines don't
+		// race the same refresh token; the multi-process file lock does
+		// not apply here because ephemeral sessions never hit the keychain.
+		c.ephemeralMu.Lock()
+		defer c.ephemeralMu.Unlock()
+		// Re-check under the lock: a sibling goroutine may have just refreshed.
+		if !s.NeedsImmediateRefresh() {
+			return nil
+		}
 		return c.oauth.Refresh(s)
 	}
-	return nil
+	return WithRefreshLock(func() error {
+		// Re-read: another process may have just refreshed.
+		latest, lerr := LoadFromKeychain(c.Profile())
+		if lerr == nil {
+			c.SetSession(latest)
+			if !latest.NeedsImmediateRefresh() {
+				return nil
+			}
+			s = latest // CRUCIAL — refresh the freshest tokens
+		}
+		if err := c.oauth.Refresh(s); err != nil {
+			return err
+		}
+		// Ephemeral branch exited earlier; safe to persist unconditionally here.
+		return s.SaveToKeychain(c.Profile())
+	})
 }
 
-// getJSON does a GET, auto-refreshes once on 401, and decodes into out.
-// It is the private workhorse used by all endpoint helpers.
-func (c *Client) getJSON(host Host, path string, out any) error {
+// GetJSONCtx is the context-aware GET. It auto-refreshes once on 401 and decodes into out.
+// GetJSON is preserved for Plan A callers and delegates to GetJSONCtx with context.Background().
+//
+// IMPORTANT: on the 401 branch we drain AND close the first response body BEFORE issuing
+// the retry request. `defer` would stack LIFO and keep the first connection checked out
+// of http.Transport until function return — under concurrent pagination (positions,
+// orders) this exhausts MaxIdleConnsPerHost. See Codex Fix A.
+func (c *Client) GetJSONCtx(ctx context.Context, host Host, path string, out any) error {
 	if err := c.ensureFresh(); err != nil {
 		return err
 	}
-	resp, err := c.do(host, http.MethodGet, path, nil)
+	resp, err := c.do(ctx, host, http.MethodGet, path, nil)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		// One retry after refresh.
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close() // free the connection BEFORE the retry
 		if rerr := c.oauth.Refresh(c.Session()); rerr != nil {
 			return rerr
 		}
-		resp2, err := c.do(host, http.MethodGet, path, nil)
+		resp2, err := c.do(ctx, host, http.MethodGet, path, nil)
 		if err != nil {
 			return err
 		}
@@ -127,14 +208,19 @@ func (c *Client) getJSON(host Host, path string, out any) error {
 		}
 		return decodeOrMap(resp2, out)
 	}
-
+	defer resp.Body.Close()
 	return decodeOrMap(resp, out)
 }
 
+// getJSON is the private workhorse used by legacy callers; forwards to GetJSONCtx.
+func (c *Client) getJSON(host Host, path string, out any) error {
+	return c.GetJSONCtx(context.Background(), host, path, out)
+}
+
 // do builds and sends a single request with the Authorization header.
-func (c *Client) do(host Host, method, path string, body io.Reader) (*http.Response, error) {
+func (c *Client) do(ctx context.Context, host Host, method, path string, body io.Reader) (*http.Response, error) {
 	s := c.Session()
-	req, err := http.NewRequest(method, c.baseFor(host)+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseFor(host)+path, body)
 	if err != nil {
 		return nil, &APIError{Code: CodeValidation, Message: err.Error()}
 	}
@@ -183,5 +269,5 @@ func decodeOrMap(resp *http.Response, out any) error {
 // GetJSON is the exported host-scoped GET for endpoint packages.
 // Endpoint subpackages use this rather than the internal getJSON directly.
 func (c *Client) GetJSON(host Host, path string, out any) error {
-	return c.getJSON(host, path, out)
+	return c.GetJSONCtx(context.Background(), host, path, out)
 }

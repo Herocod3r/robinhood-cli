@@ -1,0 +1,11 @@
+{
+  "account_number": "5RY12345",
+  "buying_power": "25784.40",
+  "cash": "25784.40",
+  "sweep_enabled": true,
+  "margin_balance": "0.00",
+  "pattern_day_trader": false,
+  "day_trade_count": 0,
+  "instant_used": "0.00",
+  "instant_available": "1000.00"
+}

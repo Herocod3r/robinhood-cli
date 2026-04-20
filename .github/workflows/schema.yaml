@@ -1,0 +1,102 @@
+name: schema stability
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # 09:00 UTC daily
+  workflow_dispatch: {}
+  pull_request:
+    branches: [main]
+    paths:
+      - "cmd/**"
+      - "internal/**"
+      - ".github/schema-baseline.json"
+      - ".github/workflows/schema.yaml"
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: Build rh
+        run: go build -o rh ./cmd/rh
+      - name: Diff current vs baseline
+        run: |
+          ./rh commands --json > /tmp/current.json
+          python3 - <<'PY'
+          import json, sys
+
+          STABILITY_RANK = {"green": 0, "yellow": 1, "red": 2, "": 3}
+
+          def norm(cmds):
+              out = {}
+              for c in cmds:
+                  raw_flags = c.get("flags")
+                  # Treat flags: null and flags: [] as equivalent (empty list)
+                  flags = sorted([f["name"] for f in (raw_flags or [])])
+                  out[c["name"]] = {
+                      "flags": flags,
+                      "stability": c.get("stability", ""),
+                  }
+              return out
+
+          base = norm(json.load(open(".github/schema-baseline.json"))["data"])
+          cur = norm(json.load(open("/tmp/current.json"))["data"])
+
+          hard_errors = []   # exit 1
+          warnings = []      # exit 0, ::warning::
+
+          for name, spec in base.items():
+              if name not in cur:
+                  hard_errors.append(f"removed command: {name}")
+                  continue
+              base_flags = set(spec["flags"])
+              cur_flags = set(cur[name]["flags"])
+              missing = base_flags - cur_flags
+              added = cur_flags - base_flags
+              if missing:
+                  hard_errors.append(
+                      f"{name}: removed flags {sorted(missing)}"
+                  )
+              if added:
+                  warnings.append(
+                      f"{name}: added flags {sorted(added)} "
+                      f"(verify not a rename; refresh baseline on release)"
+                  )
+              base_stab = spec["stability"]
+              cur_stab = cur[name]["stability"]
+              if base_stab != cur_stab:
+                  base_rank = STABILITY_RANK.get(base_stab, 3)
+                  cur_rank = STABILITY_RANK.get(cur_stab, 3)
+                  if cur_rank > base_rank:
+                      hard_errors.append(
+                          f"{name}: stability regressed "
+                          f"{base_stab} -> {cur_stab}"
+                      )
+                  else:
+                      warnings.append(
+                          f"{name}: stability improved "
+                          f"{base_stab} -> {cur_stab}"
+                      )
+
+          for name in cur:
+              if name not in base:
+                  warnings.append(
+                      f"added command: {name} "
+                      f"(baseline refresh required on next release)"
+                  )
+
+          for w in warnings:
+              print(f"::warning::{w}")
+
+          if hard_errors:
+              print("::error::JSON schema drift detected")
+              for e in hard_errors:
+                  print(f" - {e}")
+              sys.exit(1)
+
+          print("OK")
+          PY

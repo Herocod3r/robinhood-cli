@@ -10,9 +10,13 @@ import (
 func init() {
 	c := &cobra.Command{
 		Use:   "schema [command]",
-		Short: "Emit JSON schema information (Plan A: envelope only)",
+		Short: "Emit JSON schema information (envelope and per-command data shapes)",
 		Args:  cobra.MaximumNArgs(1),
-		RunE:  runSchema,
+		Annotations: map[string]string{
+			"category":  "meta",
+			"stability": "green",
+		},
+		RunE: runSchema,
 	}
 	register(c)
 }

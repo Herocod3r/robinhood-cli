@@ -1,0 +1,9 @@
+[
+  {
+    "symbol": "AAPL",
+    "name": "Apple Inc.",
+    "instrument_id": "450dfc6d-5510-4d40-abfb-f633b7d9be3e",
+    "tradeable": true,
+    "type": "stock"
+  }
+]

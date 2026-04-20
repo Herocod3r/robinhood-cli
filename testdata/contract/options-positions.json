@@ -1,0 +1,17 @@
+[
+  {
+    "symbol": "AAPL",
+    "strategy": "long_call",
+    "quantity": "1.0000",
+    "average_price": "3.25",
+    "legs": [
+      {
+        "option_id": "a1b2c3d4-0000-4000-8000-000000000001",
+        "type": "call",
+        "strike_price": "190.00",
+        "expiration": "2026-06-19",
+        "position_type": "long"
+      }
+    ]
+  }
+]
