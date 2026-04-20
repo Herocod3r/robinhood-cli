@@ -1,0 +1,328 @@
+{
+  "command": "commands",
+  "data": [
+    {
+      "category": "account",
+      "name": "account",
+      "stability": "green",
+      "summary": "Account summary: buying power, cash, margin, PDT status"
+    },
+    {
+      "category": "meta",
+      "flags": [
+        {
+          "default": "false",
+          "description": "help for commands",
+          "name": "help",
+          "shorthand": "h",
+          "type": "bool"
+        }
+      ],
+      "name": "commands",
+      "stability": "green",
+      "summary": "List commands (for scripts/skills); pass a name for one command's detail"
+    },
+    {
+      "name": "completion",
+      "summary": "Generate the autocompletion script for the specified shell"
+    },
+    {
+      "category": "portfolio",
+      "flags": [
+        {
+          "description": "filter to a single ticker",
+          "name": "symbol",
+          "type": "string"
+        },
+        {
+          "default": "0",
+          "description": "filter to paid-at year (e.g. 2025)",
+          "name": "year",
+          "type": "int"
+        }
+      ],
+      "name": "dividends",
+      "stability": "green",
+      "summary": "List dividend events (paid/pending) with optional year + symbol filters"
+    },
+    {
+      "category": "account",
+      "flags": [
+        {
+          "description": "download each document into PATH",
+          "name": "download",
+          "type": "string"
+        },
+        {
+          "default": "false",
+          "description": "overwrite existing files when --download is set",
+          "name": "force",
+          "type": "bool"
+        },
+        {
+          "description": "YYYY-MM-DD or relative (ytd|7d|1y)",
+          "name": "since",
+          "type": "string"
+        },
+        {
+          "description": "filter: 1099|trade_confirm|statement|other",
+          "name": "type",
+          "type": "string"
+        }
+      ],
+      "name": "documents",
+      "stability": "yellow",
+      "summary": "List (and optionally download) account documents: 1099, statements, trade confirms"
+    },
+    {
+      "category": "research",
+      "name": "earnings",
+      "stability": "green",
+      "summary": "Historical earnings: estimate vs actual, call info"
+    },
+    {
+      "category": "research",
+      "name": "fundamentals",
+      "stability": "green",
+      "summary": "Company fundamentals (market cap, P/E, 52-wk hi/lo, etc.)"
+    },
+    {
+      "name": "help",
+      "summary": "Help about any command"
+    },
+    {
+      "category": "market",
+      "flags": [
+        {
+          "default": "day",
+          "description": "5minute|10minute|hour|day|week",
+          "name": "interval",
+          "type": "string"
+        },
+        {
+          "default": "year",
+          "description": "day|week|month|3month|year|5year",
+          "name": "span",
+          "type": "string"
+        }
+      ],
+      "name": "historicals",
+      "stability": "green",
+      "summary": "OHLCV bars (interval \u00d7 span)"
+    },
+    {
+      "category": "auth",
+      "flags": [
+        {
+          "description": "base32 TOTP shared secret (optional; ROBINHOOD_TOTP_SECRET env var also honored)",
+          "name": "totp-secret",
+          "type": "string"
+        },
+        {
+          "description": "email/username (prompted if empty)",
+          "name": "username",
+          "type": "string"
+        }
+      ],
+      "name": "login",
+      "stability": "green",
+      "summary": "Log into Robinhood (interactive)"
+    },
+    {
+      "category": "auth",
+      "flags": [
+        {
+          "default": "false",
+          "description": "clear sessions for every profile",
+          "name": "all-profiles",
+          "type": "bool"
+        }
+      ],
+      "name": "logout",
+      "stability": "green",
+      "summary": "Clear stored session(s)"
+    },
+    {
+      "category": "market",
+      "flags": [
+        {
+          "description": "YYYY-MM-DD (default today UTC)",
+          "name": "date",
+          "type": "string"
+        }
+      ],
+      "name": "market-hours",
+      "stability": "green",
+      "summary": "Show market open/close for each exchange on a given date"
+    },
+    {
+      "category": "research",
+      "flags": [
+        {
+          "default": "10",
+          "description": "max items (0=all)",
+          "name": "limit",
+          "type": "int"
+        }
+      ],
+      "name": "news",
+      "stability": "green",
+      "summary": "Recent news articles for a symbol"
+    },
+    {
+      "category": "portfolio",
+      "flags": [
+        {
+          "description": "filter to a single ticker",
+          "name": "symbol",
+          "type": "string"
+        }
+      ],
+      "name": "options-positions",
+      "stability": "yellow",
+      "summary": "List options aggregate positions with per-leg strike/type/expiry"
+    },
+    {
+      "category": "portfolio",
+      "flags": [
+        {
+          "default": "0",
+          "description": "cap output (0=all)",
+          "name": "limit",
+          "type": "int"
+        },
+        {
+          "description": "YYYY-MM-DD or relative (7d|2w|1mo|1y|ytd)",
+          "name": "since",
+          "type": "string"
+        },
+        {
+          "description": "filled|cancelled|confirmed|open",
+          "name": "state",
+          "type": "string"
+        },
+        {
+          "description": "filter to one ticker",
+          "name": "symbol",
+          "type": "string"
+        }
+      ],
+      "name": "orders",
+      "stability": "green",
+      "summary": "List order history (filters: --since --symbol --state --limit)"
+    },
+    {
+      "aliases": [
+        "pf"
+      ],
+      "category": "portfolio",
+      "name": "portfolio",
+      "stability": "green",
+      "summary": "Show account portfolio value, equity, cash, buying power"
+    },
+    {
+      "category": "portfolio",
+      "name": "position",
+      "stability": "green",
+      "summary": "Show a single position (qty, last price, cost basis, P/L)"
+    },
+    {
+      "category": "portfolio",
+      "flags": [
+        {
+          "default": "0",
+          "description": "cap output (0=all)",
+          "name": "limit",
+          "type": "int"
+        },
+        {
+          "default": "false",
+          "description": "hide positions with zero quantity",
+          "name": "nonzero",
+          "type": "bool"
+        },
+        {
+          "default": "value",
+          "description": "sort by: value|pl|symbol",
+          "name": "sort",
+          "type": "string"
+        }
+      ],
+      "name": "positions",
+      "stability": "green",
+      "summary": "List all equity positions with live quotes and unrealized P/L"
+    },
+    {
+      "category": "market",
+      "flags": [
+        {
+          "default": "false",
+          "description": "include extended-hours price when available",
+          "name": "extended-hours",
+          "type": "bool"
+        }
+      ],
+      "name": "quote",
+      "stability": "green",
+      "summary": "Real-time quote for up to 50 tickers"
+    },
+    {
+      "category": "research",
+      "name": "ratings",
+      "stability": "green",
+      "summary": "Analyst buy/hold/sell summary plus recent comments"
+    },
+    {
+      "category": "meta",
+      "name": "schema",
+      "stability": "green",
+      "summary": "Emit JSON schema information (envelope and per-command data shapes)"
+    },
+    {
+      "category": "research",
+      "flags": [
+        {
+          "default": "10",
+          "description": "cap results",
+          "name": "limit",
+          "type": "int"
+        }
+      ],
+      "name": "search",
+      "stability": "green",
+      "summary": "Search the Robinhood instrument catalog by name or symbol"
+    },
+    {
+      "category": "meta",
+      "name": "skill",
+      "stability": "green",
+      "summary": "Manage the robinhood-cli skill for Claude Code / Codex"
+    },
+    {
+      "category": "meta",
+      "name": "version",
+      "stability": "green",
+      "summary": "Print CLI version and schema version"
+    },
+    {
+      "category": "research",
+      "flags": [
+        {
+          "default": "Default",
+          "description": "watchlist name",
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "name": "watchlist",
+      "stability": "green",
+      "summary": "Show a watchlist's members with live quotes"
+    }
+  ],
+  "error": null,
+  "generated_at": "2026-04-20T06:20:18Z",
+  "meta": {
+    "count": 25
+  },
+  "schema": "robinhood-cli/v1"
+}
