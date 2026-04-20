@@ -242,6 +242,27 @@ func (w *TableWriter) WriteOptionsPositions(rows []endpoints.OptionPosition) err
 	return nil
 }
 
+// WriteOrders renders orders as a compact table.
+func (w *TableWriter) WriteOrders(rows []endpoints.Order) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Date", "Sym", "Side", "Type", "Qty", "Price", "Fill", "State"})
+	t.SetBorder(false)
+	for _, o := range rows {
+		t.Append([]string{
+			truncate(o.CreatedAt, 10),
+			o.Symbol,
+			o.Side,
+			o.Type,
+			string(o.Quantity),
+			string(o.Price),
+			string(o.AverageFillPrice),
+			o.State,
+		})
+	}
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
