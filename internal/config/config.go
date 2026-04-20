@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 // Env-var names — public contract with users and the skill.
@@ -31,6 +32,19 @@ func ConfigDir() (string, error) {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
 	return filepath.Join(home, ".config", AppName), nil
+}
+
+// profileRe restricts profile names to safe characters for use as filesystem paths
+// (path-traversal guard — Fix K).
+var profileRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// ValidProfile reports whether name is a safe profile identifier.
+// Returns an error with a human-readable message when it is not.
+func ValidProfile(name string) error {
+	if !profileRe.MatchString(name) {
+		return fmt.Errorf("invalid profile name: %q (allowed: [A-Za-z0-9_-], 1-64 chars)", name)
+	}
+	return nil
 }
 
 // EnsureConfigDir creates the config dir with 0700 perms if missing.
