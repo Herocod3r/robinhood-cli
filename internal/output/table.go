@@ -28,6 +28,36 @@ func (w *TableWriter) WritePortfolio(p *endpoints.PortfolioSummary) error {
 	return nil
 }
 
+// WriteQuotes renders a slice of quotes as a compact one-row-per-symbol table.
+func (w *TableWriter) WriteQuotes(qs []*endpoints.Quote, extended bool) error {
+	t := tablewriter.NewWriter(w.Out)
+	headers := []string{"Symbol", "Last", "Bid", "Ask", "Prev Close", "Change", "Change %"}
+	if extended {
+		headers = append(headers, "Ext Hours")
+	}
+	t.SetHeader(headers)
+	t.SetBorder(false)
+	for _, q := range qs {
+		change := subDecimal(q.LastTradePrice, q.PreviousClose)
+		changePct := divPercent(q.LastTradePrice, q.PreviousClose)
+		row := []string{
+			q.Symbol,
+			string(q.LastTradePrice),
+			string(q.BidPrice),
+			string(q.AskPrice),
+			string(q.PreviousClose),
+			change,
+			changePct,
+		}
+		if extended {
+			row = append(row, string(q.ExtendedHoursPrice))
+		}
+		t.Append(row)
+	}
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
