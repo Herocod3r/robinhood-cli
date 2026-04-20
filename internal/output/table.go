@@ -137,6 +137,22 @@ func (w *TableWriter) WriteHistoricals(h *endpoints.Historicals) error {
 	return nil
 }
 
+// WriteNews renders news items as a short table (title truncated).
+func (w *TableWriter) WriteNews(items []endpoints.NewsItem) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Published", "Source", "Title"})
+	t.SetBorder(false)
+	for _, it := range items {
+		t.Append([]string{
+			truncate(it.PublishedAt, 19),
+			truncate(it.Source, 16),
+			truncate(it.Title, 80),
+		})
+	}
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
