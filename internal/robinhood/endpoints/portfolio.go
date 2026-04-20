@@ -2,6 +2,8 @@
 package endpoints
 
 import (
+	"context"
+
 	"github.com/herocod3r/robinhood-cli/internal/robinhood"
 )
 
@@ -42,9 +44,9 @@ type unifiedAccountResp struct {
 }
 
 // Get returns a merged PortfolioSummary combining /portfolios/ and /accounts/unified.
-func (p *Portfolio) Get() (*PortfolioSummary, error) {
+func (p *Portfolio) Get(ctx context.Context) (*PortfolioSummary, error) {
 	var pr portfolioResultsResp
-	if err := p.c.GetJSON(robinhood.APIHost, "/portfolios/", &pr); err != nil {
+	if err := p.c.GetJSONCtx(ctx, robinhood.APIHost, "/portfolios/", &pr); err != nil {
 		return nil, err
 	}
 	if len(pr.Results) == 0 {
@@ -56,7 +58,7 @@ func (p *Portfolio) Get() (*PortfolioSummary, error) {
 	first := pr.Results[0]
 
 	var uni unifiedAccountResp
-	if err := p.c.GetJSON(robinhood.PhoenixHost, "/accounts/unified", &uni); err != nil {
+	if err := p.c.GetJSONCtx(ctx, robinhood.PhoenixHost, "/accounts/unified", &uni); err != nil {
 		return nil, err
 	}
 

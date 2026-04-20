@@ -1,6 +1,7 @@
 package robinhood
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -244,5 +245,39 @@ func TestClient_GetJSON_NotFound(t *testing.T) {
 	apiErr, ok := err.(*APIError)
 	if !ok || apiErr.Code != CodeNotFound {
 		t.Errorf("got %v", err)
+	}
+}
+
+// TestClient_GetJSONCtx_CancelsInFlight verifies GetJSONCtx respects context cancellation.
+func TestClient_GetJSONCtx_CancelsInFlight(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-release
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+	defer close(release)
+
+	c := NewClientWithHosts(ts.URL, ts.URL, ts.URL, ts.Client())
+	c.SetSession(&Session{AccessToken: "t", ExpiresAt: time.Now().Add(time.Hour)})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		var out any
+		errCh <- c.GetJSONCtx(ctx, APIHost, "/x/", &out)
+	}()
+	<-started
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatalf("expected cancellation error, got nil")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("GetJSONCtx did not return after cancel")
 	}
 }

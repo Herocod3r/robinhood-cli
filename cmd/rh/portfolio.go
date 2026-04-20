@@ -24,7 +24,7 @@ func runPortfolio(cmd *cobra.Command, args []string) error {
 		return err // main() writes the envelope
 	}
 
-	summary, err := endpoints.NewPortfolio(client).Get()
+	summary, err := endpoints.NewPortfolio(client).Get(cmd.Context())
 	if err != nil {
 		return err // main() writes the envelope
 	}

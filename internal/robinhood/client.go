@@ -1,6 +1,7 @@
 package robinhood
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -36,6 +37,7 @@ type Client struct {
 
 	mu      sync.Mutex
 	session *Session
+	profile string
 }
 
 // NewClient returns a client pointed at production hosts.
@@ -51,6 +53,7 @@ func NewClientWithHosts(apiBase, nummusBase, phoenixBase string, h *http.Client)
 		phoenixBase: phoenixBase,
 		http:        h,
 		oauth:       &oauth{baseURL: apiBase, httpClient: h},
+		profile:     "default",
 	}
 }
 
@@ -66,6 +69,28 @@ func (c *Client) Session() *Session {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.session
+}
+
+// SetProfile records which keychain profile this client is authenticated for.
+// Defaults to "default" so tests that don't call SetProfile still work.
+func (c *Client) SetProfile(p string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if p == "" {
+		c.profile = "default"
+		return
+	}
+	c.profile = p
+}
+
+// Profile returns the keychain profile this client uses for refresh persistence.
+func (c *Client) Profile() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.profile == "" {
+		return "default"
+	}
+	return c.profile
 }
 
 // baseFor returns the base URL for the given host.
@@ -100,24 +125,29 @@ func (c *Client) ensureFresh() error {
 	return nil
 }
 
-// getJSON does a GET, auto-refreshes once on 401, and decodes into out.
-// It is the private workhorse used by all endpoint helpers.
-func (c *Client) getJSON(host Host, path string, out any) error {
+// GetJSONCtx is the context-aware GET. It auto-refreshes once on 401 and decodes into out.
+// GetJSON is preserved for Plan A callers and delegates to GetJSONCtx with context.Background().
+//
+// IMPORTANT: on the 401 branch we drain AND close the first response body BEFORE issuing
+// the retry request. `defer` would stack LIFO and keep the first connection checked out
+// of http.Transport until function return — under concurrent pagination (positions,
+// orders) this exhausts MaxIdleConnsPerHost. See Codex Fix A.
+func (c *Client) GetJSONCtx(ctx context.Context, host Host, path string, out any) error {
 	if err := c.ensureFresh(); err != nil {
 		return err
 	}
-	resp, err := c.do(host, http.MethodGet, path, nil)
+	resp, err := c.do(ctx, host, http.MethodGet, path, nil)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		// One retry after refresh.
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close() // free the connection BEFORE the retry
 		if rerr := c.oauth.Refresh(c.Session()); rerr != nil {
 			return rerr
 		}
-		resp2, err := c.do(host, http.MethodGet, path, nil)
+		resp2, err := c.do(ctx, host, http.MethodGet, path, nil)
 		if err != nil {
 			return err
 		}
@@ -127,14 +157,19 @@ func (c *Client) getJSON(host Host, path string, out any) error {
 		}
 		return decodeOrMap(resp2, out)
 	}
-
+	defer resp.Body.Close()
 	return decodeOrMap(resp, out)
 }
 
+// getJSON is the private workhorse used by legacy callers; forwards to GetJSONCtx.
+func (c *Client) getJSON(host Host, path string, out any) error {
+	return c.GetJSONCtx(context.Background(), host, path, out)
+}
+
 // do builds and sends a single request with the Authorization header.
-func (c *Client) do(host Host, method, path string, body io.Reader) (*http.Response, error) {
+func (c *Client) do(ctx context.Context, host Host, method, path string, body io.Reader) (*http.Response, error) {
 	s := c.Session()
-	req, err := http.NewRequest(method, c.baseFor(host)+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseFor(host)+path, body)
 	if err != nil {
 		return nil, &APIError{Code: CodeValidation, Message: err.Error()}
 	}
@@ -183,5 +218,5 @@ func decodeOrMap(resp *http.Response, out any) error {
 // GetJSON is the exported host-scoped GET for endpoint packages.
 // Endpoint subpackages use this rather than the internal getJSON directly.
 func (c *Client) GetJSON(host Host, path string, out any) error {
-	return c.getJSON(host, path, out)
+	return c.GetJSONCtx(context.Background(), host, path, out)
 }
