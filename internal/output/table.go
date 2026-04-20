@@ -28,6 +28,26 @@ func (w *TableWriter) WritePortfolio(p *endpoints.PortfolioSummary) error {
 	return nil
 }
 
+// WritePositions renders the positions table with live quotes + P/L columns.
+func (w *TableWriter) WritePositions(ps []endpoints.Position) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Symbol", "Qty", "Last", "Market Value", "Cost Basis", "P/L", "P/L %"})
+	t.SetBorder(false)
+	for _, p := range ps {
+		t.Append([]string{
+			p.Symbol,
+			string(p.Quantity),
+			string(p.LastPrice),
+			string(p.MarketValue),
+			string(p.CostBasis),
+			string(p.UnrealizedPL),
+			string(p.UnrealizedPLPercent),
+		})
+	}
+	t.Render()
+	return nil
+}
+
 // WriteQuotes renders a slice of quotes as a compact one-row-per-symbol table.
 func (w *TableWriter) WriteQuotes(qs []*endpoints.Quote, extended bool) error {
 	t := tablewriter.NewWriter(w.Out)
