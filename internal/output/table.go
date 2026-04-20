@@ -153,6 +153,24 @@ func (w *TableWriter) WriteNews(items []endpoints.NewsItem) error {
 	return nil
 }
 
+// WriteEarnings renders earnings rows.
+func (w *TableWriter) WriteEarnings(items []endpoints.EarningsEvent) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Report", "Year", "Q", "Estimate", "Actual"})
+	t.SetBorder(false)
+	for _, it := range items {
+		t.Append([]string{
+			it.ReportAt,
+			fmt.Sprintf("%d", it.Year),
+			fmt.Sprintf("%d", it.Quarter),
+			string(it.EPS.Estimate),
+			string(it.EPS.Actual),
+		})
+	}
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
