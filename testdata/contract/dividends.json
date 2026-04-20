@@ -1,0 +1,15 @@
+[
+  {
+    "symbol": "AAPL",
+    "amount": "12.00",
+    "rate": "0.24",
+    "position": "50.0000",
+    "withholding": "0.00",
+    "paid_at": "2026-02-14T00:00:00Z",
+    "record_date": "2026-02-08",
+    "payable_date": "2026-02-14",
+    "instrument_url": "https://api.robinhood.com/instruments/450dfc6d-5510-4d40-abfb-f633b7d9be3e/",
+    "instrument_id": "450dfc6d-5510-4d40-abfb-f633b7d9be3e",
+    "state": "paid"
+  }
+]

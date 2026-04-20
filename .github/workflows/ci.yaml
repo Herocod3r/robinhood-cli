@@ -69,6 +69,17 @@ jobs:
       - name: Run govulncheck
         run: govulncheck ./...
 
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+      - name: Run JSON schema contract tests
+        run: make test-contract
+
   skill-sync-check:
     runs-on: ubuntu-latest
     steps:

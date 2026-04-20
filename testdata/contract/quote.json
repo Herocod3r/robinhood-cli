@@ -1,0 +1,14 @@
+[
+  {
+    "symbol": "AAPL",
+    "last_price": "182.50",
+    "bid_price": "182.49",
+    "ask_price": "182.51",
+    "bid_size": 300,
+    "ask_size": 200,
+    "previous_close": "180.00",
+    "extended_hours_price": "182.80",
+    "volume": 52300000,
+    "updated_at": "2026-04-20T20:00:00Z"
+  }
+]

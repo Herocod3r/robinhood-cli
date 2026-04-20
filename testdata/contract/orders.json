@@ -1,0 +1,18 @@
+[
+  {
+    "id": "f0e9d8c7-0000-4000-8000-000000000001",
+    "symbol": "AAPL",
+    "side": "buy",
+    "type": "market",
+    "state": "filled",
+    "quantity": "10.0000",
+    "price": "180.00",
+    "average_fill_price": "180.12",
+    "fees": "0.00",
+    "time_in_force": "gfd",
+    "extended_hours": false,
+    "created_at": "2026-04-01T13:30:00Z",
+    "filled_at": "2026-04-01T13:30:02Z",
+    "instrument": "https://api.robinhood.com/instruments/450dfc6d-5510-4d40-abfb-f633b7d9be3e/"
+  }
+]

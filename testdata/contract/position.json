@@ -1,0 +1,12 @@
+{
+  "symbol": "AAPL",
+  "name": "Apple Inc.",
+  "quantity": "50.0000",
+  "average_buy_price": "150.1234",
+  "last_price": "182.50",
+  "market_value": "9125.00",
+  "cost_basis": "7506.17",
+  "unrealized_pl": "1618.83",
+  "unrealized_pl_percent": "0.2156",
+  "instrument_id": "450dfc6d-5510-4d40-abfb-f633b7d9be3e"
+}
