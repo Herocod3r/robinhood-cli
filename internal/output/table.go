@@ -171,6 +171,37 @@ func (w *TableWriter) WriteEarnings(items []endpoints.EarningsEvent) error {
 	return nil
 }
 
+// WriteRatings renders the rating summary + recent analyst comments.
+func (w *TableWriter) WriteRatings(r *endpoints.Rating) error {
+	summary := tablewriter.NewWriter(w.Out)
+	summary.SetHeader([]string{"Symbol", "Buy", "Hold", "Sell"})
+	summary.SetBorder(false)
+	summary.Append([]string{
+		r.Symbol,
+		fmt.Sprintf("%d", r.Summary.NumBuy),
+		fmt.Sprintf("%d", r.Summary.NumHold),
+		fmt.Sprintf("%d", r.Summary.NumSell),
+	})
+	summary.Render()
+
+	if len(r.Ratings) == 0 {
+		return nil
+	}
+	fmt.Fprintln(w.Out)
+	comments := tablewriter.NewWriter(w.Out)
+	comments.SetHeader([]string{"Published", "Type", "Comment"})
+	comments.SetBorder(false)
+	for _, c := range r.Ratings {
+		comments.Append([]string{
+			truncate(c.PublishedAt, 19),
+			c.Type,
+			truncate(c.Text, 80),
+		})
+	}
+	comments.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
