@@ -118,6 +118,25 @@ func (w *TableWriter) WriteFundamentals(rows []endpoints.Fundamentals) error {
 	return nil
 }
 
+// WriteHistoricals renders OHLCV bars; most recent last.
+func (w *TableWriter) WriteHistoricals(h *endpoints.Historicals) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Begin", "O", "H", "L", "C", "Vol"})
+	t.SetBorder(false)
+	for _, b := range h.Bars {
+		t.Append([]string{
+			b.BeginsAt,
+			string(b.OpenPrice),
+			string(b.HighPrice),
+			string(b.LowPrice),
+			string(b.ClosePrice),
+			fmt.Sprintf("%d", b.Volume),
+		})
+	}
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
