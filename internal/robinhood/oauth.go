@@ -23,6 +23,21 @@ type oauth struct {
 	httpClient *http.Client
 }
 
+// OAuth is the exported alias used by cmd/rh (login flow). Keeping the
+// lowercase `oauth` as the internal type lets the Client embed it without
+// leaking implementation details; NewOAuth constructs one for callers that
+// want to drive PasswordGrant / PasswordGrantWithWorkflow directly.
+type OAuth = oauth
+
+// NewOAuth returns an OAuth client bound to baseURL and h. If h is nil a
+// default client with a 30s timeout is used.
+func NewOAuth(baseURL string, h *http.Client) *OAuth {
+	if h == nil {
+		h = &http.Client{Timeout: 30 * time.Second}
+	}
+	return &oauth{baseURL: baseURL, httpClient: h}
+}
+
 type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
