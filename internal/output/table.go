@@ -96,6 +96,28 @@ func (w *TableWriter) WriteAccount(a *endpoints.AccountSummary) error {
 	return nil
 }
 
+// WriteFundamentals renders a subset of fundamentals columns.
+func (w *TableWriter) WriteFundamentals(rows []endpoints.Fundamentals) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Symbol", "Open", "High", "Low", "52wk Hi", "52wk Lo", "Mkt Cap", "P/E", "Div Yield"})
+	t.SetBorder(false)
+	for _, r := range rows {
+		t.Append([]string{
+			r.Symbol,
+			string(r.Open),
+			string(r.High),
+			string(r.Low),
+			string(r.High52Weeks),
+			string(r.Low52Weeks),
+			string(r.MarketCap),
+			string(r.PERatio),
+			string(r.DividendYield),
+		})
+	}
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
