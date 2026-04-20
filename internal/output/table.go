@@ -221,6 +221,27 @@ func (w *TableWriter) WriteDividends(rows []endpoints.Dividend) error {
 	return nil
 }
 
+// WriteOptionsPositions renders one row per leg for each aggregate position.
+func (w *TableWriter) WriteOptionsPositions(rows []endpoints.OptionPosition) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Symbol", "Strategy", "Qty", "Avg Open", "Leg Type", "Strike", "Expires", "Long/Short"})
+	t.SetBorder(false)
+	for _, r := range rows {
+		for i, leg := range r.Legs {
+			sym, strat, qty, avg := r.Symbol, r.Strategy, string(r.Quantity), string(r.AveragePrice)
+			if i > 0 {
+				sym, strat, qty, avg = "", "", "", ""
+			}
+			t.Append([]string{
+				sym, strat, qty, avg,
+				leg.Type, string(leg.StrikePrice), leg.Expiration, leg.PositionType,
+			})
+		}
+	}
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
