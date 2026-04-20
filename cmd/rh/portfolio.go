@@ -13,7 +13,11 @@ func init() {
 		Use:     "portfolio",
 		Aliases: []string{"pf"},
 		Short:   "Show account portfolio value, equity, cash, buying power",
-		RunE:    runPortfolio,
+		Annotations: map[string]string{
+			"category":  "portfolio",
+			"stability": "green",
+		},
+		RunE: runPortfolio,
 	}
 	register(c)
 }

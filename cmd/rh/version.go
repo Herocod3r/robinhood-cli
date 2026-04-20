@@ -13,7 +13,11 @@ func init() {
 	c := &cobra.Command{
 		Use:   "version",
 		Short: "Print CLI version and schema version",
-		RunE:  runVersion,
+		Annotations: map[string]string{
+			"category":  "meta",
+			"stability": "green",
+		},
+		RunE: runVersion,
 	}
 	register(c)
 }

@@ -14,7 +14,11 @@ func init() {
 	c := &cobra.Command{
 		Use:   "logout",
 		Short: "Clear stored session(s)",
-		RunE:  runLogoutCmd,
+		Annotations: map[string]string{
+			"category":  "auth",
+			"stability": "green",
+		},
+		RunE: runLogoutCmd,
 	}
 	c.Flags().Bool("all-profiles", false, "clear sessions for every profile")
 	register(c)

@@ -21,7 +21,11 @@ func init() {
 	c := &cobra.Command{
 		Use:   "login",
 		Short: "Log into Robinhood (interactive)",
-		RunE:  runLogin,
+		Annotations: map[string]string{
+			"category":  "auth",
+			"stability": "green",
+		},
+		RunE: runLogin,
 	}
 	c.Flags().String("totp-secret", "", "base32 TOTP shared secret (optional; ROBINHOOD_TOTP_SECRET env var also honored)")
 	c.Flags().String("username", "", "email/username (prompted if empty)")
