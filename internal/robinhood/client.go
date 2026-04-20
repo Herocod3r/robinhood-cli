@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/herocod3r/robinhood-cli/internal/config"
 )
 
 // Host enumerates the Robinhood API hosts we talk to.
@@ -38,6 +40,13 @@ type Client struct {
 	mu      sync.Mutex
 	session *Session
 	profile string
+
+	// ephemeralMu serializes refresh calls for ephemeral (env-loaded) sessions.
+	// The file-lock in WithRefreshLock guards multi-process keychain writes;
+	// ephemeral sessions never touch the keychain and so bypass that lock,
+	// but two goroutines in the same process can still race on the same
+	// refresh token. Serialize them here.
+	ephemeralMu sync.Mutex
 }
 
 // NewClient returns a client pointed at production hosts.
@@ -73,14 +82,29 @@ func (c *Client) Session() *Session {
 
 // SetProfile records which keychain profile this client is authenticated for.
 // Defaults to "default" so tests that don't call SetProfile still work.
+// Invalid names are rejected; we log and keep the previous value so callers
+// that cannot return an error (Task 14 wiring) still degrade gracefully.
+// Typed callers can use SetProfileChecked when they need the error.
 func (c *Client) SetProfile(p string) {
+	_ = c.SetProfileChecked(p)
+}
+
+// SetProfileChecked validates and sets the profile, returning an error when
+// the input fails the profile-name policy. On error the previous value is
+// retained.
+func (c *Client) SetProfileChecked(p string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if p == "" {
 		c.profile = "default"
-		return
+		return nil
+	}
+	if err := config.ValidProfile(p); err != nil {
+		// Keep the previous value; caller can observe the error.
+		return err
 	}
 	c.profile = p
+	return nil
 }
 
 // Profile returns the keychain profile this client uses for refresh persistence.
@@ -123,6 +147,15 @@ func (c *Client) ensureFresh() error {
 	}
 	if s.Ephemeral {
 		// Env-sourced session: refresh in memory only, never persist.
+		// Serialize refreshes within this process so two goroutines don't
+		// race the same refresh token; the multi-process file lock does
+		// not apply here because ephemeral sessions never hit the keychain.
+		c.ephemeralMu.Lock()
+		defer c.ephemeralMu.Unlock()
+		// Re-check under the lock: a sibling goroutine may have just refreshed.
+		if !s.NeedsImmediateRefresh() {
+			return nil
+		}
 		return c.oauth.Refresh(s)
 	}
 	return WithRefreshLock(func() error {
@@ -138,9 +171,7 @@ func (c *Client) ensureFresh() error {
 		if err := c.oauth.Refresh(s); err != nil {
 			return err
 		}
-		if s.Ephemeral {
-			return nil
-		}
+		// Ephemeral branch exited earlier; safe to persist unconditionally here.
 		return s.SaveToKeychain(c.Profile())
 	})
 }
