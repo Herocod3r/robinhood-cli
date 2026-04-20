@@ -306,6 +306,36 @@ func (w *TableWriter) WriteMarketHours(rows []endpoints.MarketHours) error {
 	return nil
 }
 
+// WriteDocuments renders the documents list.
+func (w *TableWriter) WriteDocuments(docs []endpoints.Document) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Date", "Type", "Name", "ID"})
+	t.SetBorder(false)
+	for _, d := range docs {
+		t.Append([]string{d.Date, d.Type, truncate(d.Name, 40), d.ID})
+	}
+	t.Render()
+	return nil
+}
+
+// WriteDocumentDownloads renders the result of a --download run.
+func (w *TableWriter) WriteDocumentDownloads(res []endpoints.DownloadResult) error {
+	t := tablewriter.NewWriter(w.Out)
+	t.SetHeader([]string{"Date", "Name", "Path", "Bytes", "Skipped"})
+	t.SetBorder(false)
+	for _, r := range res {
+		t.Append([]string{
+			r.Document.Date,
+			truncate(r.Document.Name, 32),
+			truncate(r.Path, 60),
+			fmt.Sprintf("%d", r.Bytes),
+			fmt.Sprintf("%t", r.Skipped),
+		})
+	}
+	t.Render()
+	return nil
+}
+
 // WriteError renders a CLI-friendly error line. Always writes to Out even if that
 // is stderr — caller decides.
 func (w *TableWriter) WriteError(command string, err error) error {
