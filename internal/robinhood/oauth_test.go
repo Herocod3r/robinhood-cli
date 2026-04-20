@@ -115,3 +115,33 @@ func TestRefreshAccessToken_UnknownError(t *testing.T) {
 		t.Errorf("Message = %q", apiErr.Message)
 	}
 }
+
+// TestRefresh_SendsAPIVersionHeader is a Fix D regression guard: every
+// oauth call must include the X-Robinhood-API-Version header that the
+// Sheriff rollout cohort checks, plus a User-Agent so our calls are
+// identifiable in their logs.
+func TestRefresh_SendsAPIVersionHeader(t *testing.T) {
+	var gotAPIVer, gotUA string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAPIVer = r.Header.Get("X-Robinhood-API-Version")
+		gotUA = r.Header.Get("User-Agent")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "a",
+			"refresh_token": "r",
+			"expires_in":    86400,
+		})
+	}))
+	defer srv.Close()
+
+	o := &oauth{baseURL: srv.URL, httpClient: srv.Client()}
+	sess := &Session{RefreshToken: "r"}
+	if err := o.Refresh(sess); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if gotAPIVer == "" {
+		t.Fatal("X-Robinhood-API-Version header missing on Refresh")
+	}
+	if gotUA == "" {
+		t.Fatal("User-Agent header missing on Refresh")
+	}
+}

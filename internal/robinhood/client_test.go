@@ -111,6 +111,10 @@ func TestClient_GetJSON_RefreshesThenPermanent401(t *testing.T) {
 }
 
 func TestClient_GetJSON_PreEmptiveRefresh(t *testing.T) {
+	// Isolate keychain + config dir so the refresh-lock path doesn't touch the real user's state.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("ROBINHOOD_KEYCHAIN_BACKEND", "file")
+
 	var oauthCalls int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

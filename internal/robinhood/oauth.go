@@ -57,6 +57,9 @@ func (o *oauth) Refresh(s *Session) error {
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
+	// Sheriff rollout cohorts reject oauth calls without this header (Fix D).
+	req.Header.Set("X-Robinhood-API-Version", "1.431.4")
+	req.Header.Set("User-Agent", "robinhood-cli (+https://github.com/herocod3r/robinhood-cli)")
 
 	resp, err := o.httpClient.Do(req)
 	if err != nil {

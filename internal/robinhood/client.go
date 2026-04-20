@@ -106,23 +106,43 @@ func (c *Client) baseFor(h Host) string {
 }
 
 // ensureFresh refreshes pre-emptively if the session is expired.
+//
+// When a refresh is needed, it runs under WithRefreshLock so that concurrent
+// `rh` processes don't race on the same refresh token. Inside the lock we
+// re-read the keychain because another process may have just rotated
+// tokens; if the fresh session is still expired we refresh THAT session
+// (not the stale in-memory one) — see Fix B. For ephemeral env-loaded
+// sessions we never touch the keychain.
 func (c *Client) ensureFresh() error {
-	c.mu.Lock()
-	s := c.session
-	c.mu.Unlock()
+	s := c.Session()
 	if s == nil {
 		return &APIError{Code: CodeUnauthenticated, Message: "no session", Hint: "run: rh login"}
 	}
-	// Only proactively refresh when we KNOW we need to:
-	// - no access token (but refresh available), or
-	// - access token present with a known-expired ExpiresAt.
-	// Unknown expiry (env-loaded sessions) trusts the access token and
-	// lets 401 drive refresh. Otherwise every CLI invocation would burn
-	// the refresh token once before trying the live access token.
-	if s.NeedsImmediateRefresh() {
+	if !s.NeedsImmediateRefresh() {
+		return nil
+	}
+	if s.Ephemeral {
+		// Env-sourced session: refresh in memory only, never persist.
 		return c.oauth.Refresh(s)
 	}
-	return nil
+	return WithRefreshLock(func() error {
+		// Re-read: another process may have just refreshed.
+		latest, lerr := LoadFromKeychain(c.Profile())
+		if lerr == nil {
+			c.SetSession(latest)
+			if !latest.NeedsImmediateRefresh() {
+				return nil
+			}
+			s = latest // CRUCIAL — refresh the freshest tokens
+		}
+		if err := c.oauth.Refresh(s); err != nil {
+			return err
+		}
+		if s.Ephemeral {
+			return nil
+		}
+		return s.SaveToKeychain(c.Profile())
+	})
 }
 
 // GetJSONCtx is the context-aware GET. It auto-refreshes once on 401 and decodes into out.
